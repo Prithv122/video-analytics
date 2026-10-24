@@ -71,8 +71,13 @@ For each track, walk its anchors in frame order (gaps allowed). Two rules, same 
   the segment. Every crossing counts, so an id that wobbles on the line counts repeatedly.
 - **`hysteresis(band_px)`**: a track's state is `in`, `out` or unknown. It enters a state only when
   its signed distance is beyond `+band_px` (in) or `-band_px` (out). A crossing is a state change
-  `out → in` or `in → out`; time inside the band does not change state. Same projection rule.
-  `band_px = 0` must reproduce `naive` exactly (tested).
+  `out → in` or `in → out`; time inside the band does not change state.
+- **Shared details.** Both rules are one state machine and `naive` is `band_px = 0`, so
+  `hysteresis(0)` reproduces `naive` exactly (tested). A point exactly on the line has no side: it
+  keeps the previous state. An observation whose projection falls outside the segment resets the
+  state to unknown, so a crossing needs the state-setting observation and the completing
+  observation to both project inside the segment; a path that goes around the end of the segment
+  never counts. Gaps in a track are fine.
 
 A crossing event is `Crossing(track_id, frame, direction)` where `direction` is `+1` (to the in
 side) or `-1`, and `frame` is the frame of the observation that completed it.
