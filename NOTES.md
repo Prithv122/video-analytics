@@ -52,3 +52,22 @@ train sequences (different places, much denser crowds) are the test set, scored 
 
 Not quotable. The first timings ran while other projects held the CPU at 60–100 %: PyTorch and
 ONNX swapped places between runs. That is why the plan has a quiet-machine gate.
+
+## 2026-10-25 — equivalence check (dev frames, an H4 input)
+
+ONNX fp32 vs PyTorch on 50 evenly spaced dev frames, at the cache threshold 0.10 that every
+downstream step uses (`results/equivalence.csv`):
+
+| Model | Frames with equal box count | Matched boxes | Min IoU | Mean IoU | p01 IoU |
+|---|---|---|---|---|---|
+| Nano | 50 / 50 | 2,787 | 0.983 | 0.99996 | 0.9993 |
+| Small | 49 / 50 | 2,336 | 0.897 | 0.99981 | 0.9984 |
+
+The plan says "matched boxes IoU ≥ 0.99". Read literally, that is every matched box, so the
+equivalence clause of H4 **fails for both models**: one Nano box and a handful of Small boxes
+(two frames of MOT17-02) fall below it, all low-score boxes. The plan does not name the threshold
+for this check. At 0.30 (`equivalence_thr0.30.csv`) Nano passes (min 0.9946) and Small still fails
+(min 0.9805), so H4, which needs both models, fails under either reading. The rule is not being
+relaxed after the fact; the percentile columns are descriptive only. The two backends agree on
+the typical box to four decimal places and disagree on a few borderline boxes, which is what a
+different summation order in fp32 does to a box sitting near a score threshold.
