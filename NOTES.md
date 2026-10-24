@@ -71,3 +71,23 @@ for this check. At 0.30 (`equivalence_thr0.30.csv`) Nano passes (min 0.9946) and
 relaxed after the fact; the percentile columns are descriptive only. The two backends agree on
 the typical box to about four decimal places of IoU and disagree on a few boxes. The per-frame
 file records no scores, so whether those are low-score boxes is not checked.
+
+## 2026-10-25 — dev observation (tuning numbers, not results)
+
+A Small-only pass over the dev grid (`results/scratch/tuneS`, not the committed tuning run) gave
+dev f1 0.31 (naive) and 0.46 (hysteresis, band 32) at k = 1, τ = 0.6, on 94 true crossings.
+Nearly all the error is extra crossings, and nearly none of it is identity switches
+(`switch_share` 0.03–0.09). Two patterns, checked by hand:
+
+- **Jitter on the line.** One MOT17-04 track crossed `h_mid` 57 times under the naive rule: a
+  person standing on it. The band removes this (MOT17-04 `h_mid` extra crossings 62 → 2).
+- **Anchor jumps under occlusion.** With the band on, most remaining extra crossings happen at a
+  frame where the predicted box overlaps no annotated box at IoU ≥ 0.5 (32 of 45). The detector
+  draws the visible part of a person; MOT ground truth draws the whole body, legs included, behind
+  occluders. When the legs disappear the box's bottom edge jumps up by more than the band, and back
+  when they reappear: a crossing nobody made. MOT17-09's `h_mid` has 0 true crossings and still 19
+  predicted ones with a 32 px band. Predictions on non-pedestrian annotations (static people,
+  reflections, distractors) account for a handful only.
+
+So the bottom-centre of a detection box is not a foot position. That is the main threat to any
+line counter built on box anchors, and it is not something a tracker setting fixes.
