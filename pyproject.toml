@@ -1,0 +1,56 @@
+[project]
+name = "video-analytics"
+version = "0.1.0"
+description = "Detect, track and count on fixed-camera video, scored against annotated ground truth on held-out sequences, with the CPU inference budget measured."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "motmetrics==1.4.0",
+    "numpy>=2",
+    "scipy>=1.14",
+]
+
+# Console entry points need a real build backend: a uv virtual project
+# ([tool.uv] package = false) installs nothing, so the documented command fails
+# with "No module named ..." even while tests pass (pytest's pythonpath hides it).
+[project.scripts]
+vidan = "vidan.cli:main"
+
+# Detector, tracker and ONNX Runtime. Not needed for the counting core or its tests.
+[project.optional-dependencies]
+vision = [
+    "onnx==1.23.2",
+    "onnxruntime==1.31.0",
+    "opencv-python-headless>=4.10",
+    "rfdetr==1.11.2",
+    "supervision==0.31.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vidan"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: needs model weights, video or an onnxruntime session (deselected in CI)",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
