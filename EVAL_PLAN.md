@@ -136,4 +136,27 @@ Each claim is evaluated mechanically by `vidan eval --claims` and reported whate
 
 ## Amendments
 
-_None yet._
+### A1 — 2026-10-25, before any dev tuning or test scoring
+
+Found by an independent code review; no dev grid or test number existed when this was written.
+The only real result at this point is `results/equivalence.csv` (ONNX vs PyTorch boxes, which
+none of these changes touch).
+
+1. **Ground-truth boxes are clipped to the frame** (`[0, W] × [0, H]`) before counting, identity
+   assignment and MOT metrics, as detections already are. Without it a GT foot anchor below the
+   frame projects off the vertical line's segment and truth misses crossings that the clipped
+   prediction counts (MOT20-05 `v_mid`: 359 raw vs 391 clipped truth crossings). GT rows whose
+   clipped box has zero area are dropped.
+2. **Per-frame IoU assignment thresholds before solving**: pairs below IoU 0.5 get a prohibitive
+   cost instead of being dropped after the Hungarian step, which could trade a valid match for an
+   invalid one in dense frames. Same rule `mot_eval` already used.
+3. **Pipeline FPS at frame skip k** is computed from the k = 1 benchmark row, as the "Speed
+   benchmark" section defines it: `k / (t_detect + t_track_count)`.
+4. **H3 uses the hysteresis arm** of `S` and `S8` (the plan named an arm for H1 and H2 but not for
+   H3).
+5. **One test run.** `vidan eval test` refuses subset flags and refuses to run if test result files
+   already exist; partial tuning runs must write outside `results/`. A cache whose frames differ
+   from the sequence length is an error, and bad frames are reported per sequence.
+6. MOTA / IDF1 here keep predictions matched to non-pedestrian GT (the MOTChallenge devkit removes
+   them), so they are not comparable to leaderboard numbers. They were already "reported, not
+   claimed".
