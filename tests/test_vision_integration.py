@@ -135,3 +135,15 @@ def test_bytetrack_frame_skip_keeps_original_frame_numbers() -> None:
 def test_bytetrack_handles_empty_frames() -> None:
     per_frame = {1: Detections.empty(), 2: Detections.empty()}
     assert len(run_bytetrack(per_frame, frame_rate=30.0)) == 0
+
+
+def test_track_count_timing_runs_on_a_synthetic_sequence() -> None:
+    from vidan.geometry import Line
+    from vidan.speedbench import track_count_seconds
+
+    secs, n = track_count_seconds(
+        _box_frames(20),
+        30.0,
+        [Line((0.0, 250.0), (1920.0, 250.0)), Line((960.0, 0.0), (960.0, 1080.0))],
+    )
+    assert n == 20 and secs > 0

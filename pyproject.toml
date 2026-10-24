@@ -22,6 +22,7 @@ vision = [
     "onnx==1.23.2",
     "onnxruntime==1.31.0",
     "opencv-python-headless>=4.10",
+    "psutil==7.2.2",
     "rfdetr==1.11.2",
     "supervision==0.31.2",
     "trackers==2.6.1",
