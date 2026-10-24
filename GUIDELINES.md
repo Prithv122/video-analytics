@@ -21,7 +21,8 @@ The evaluation plan (`EVAL_PLAN.md`) is frozen before any detector runs on a tes
 ## Stack
 
 Python 3.12 · uv · `rfdetr` (Apache-2.0; sizes N/S/M only — XL/2XL are PML 1.0, excluded) ·
-`supervision` (MIT) for ByteTrack · `onnxruntime` (MIT) on CPU · `motmetrics` (MIT) for MOTA /
+`trackers` (Apache-2.0; ByteTrack moved there from `supervision`) with `supervision` (MIT)
+detection types · `onnxruntime` (MIT) on CPU · `motmetrics` (MIT) for MOTA /
 IDF1 / ID switches · numpy · pytest · ruff. **No Ultralytics** (AGPL-3.0).
 
 ## Non-negotiables
