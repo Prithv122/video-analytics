@@ -1,0 +1,91 @@
+{
+  "attribution": "MOT17: Milan, Leal-Taixe, Reid, Roth, Schindler, 'MOT16: A Benchmark for Multi-Object Tracking', arXiv:1603.00831. MOT20: Dendorfer et al., 'MOT20: A benchmark for multi object tracking in crowded scenes', arXiv:2003.09003. Data from https://motchallenge.net, licensed CC BY-NC-SA 3.0; not redistributed by this repository.",
+  "licence": "CC BY-NC-SA 3.0",
+  "note": "Checksums only; the data itself is not redistributed. images_sha256 is the SHA-256 of the sorted lines '<file name>\\t<size in bytes>\\n' of img1/.",
+  "sequences": {
+    "MOT17-02": {
+      "dataset": "MOT17",
+      "dir": "MOT17/train/MOT17-02-FRCNN",
+      "fps": 30.0,
+      "frame_count": 600,
+      "gt_sha256": "2e3ecb488da8886d3200d402b2b08890c6d2879923839444e9b74fa43a551440",
+      "height": 1080,
+      "images_sha256": "106a143212ba279674c3d6f0f033a450f76f6a28e6c3c3068b638c21e0e93f78",
+      "n_images": 600,
+      "split": "dev",
+      "width": 1920
+    },
+    "MOT17-04": {
+      "dataset": "MOT17",
+      "dir": "MOT17/train/MOT17-04-FRCNN",
+      "fps": 30.0,
+      "frame_count": 1050,
+      "gt_sha256": "f8cfbe36ef38a2e1857d7ebfe7d754b2355a3ffb9e1f9cedea435e86e4fbc948",
+      "height": 1080,
+      "images_sha256": "0a7d969aca7ef6ca43716d08eae403236bccf3194a67e68f1321fff83e59cdc9",
+      "n_images": 1050,
+      "split": "dev",
+      "width": 1920
+    },
+    "MOT17-09": {
+      "dataset": "MOT17",
+      "dir": "MOT17/train/MOT17-09-FRCNN",
+      "fps": 30.0,
+      "frame_count": 525,
+      "gt_sha256": "592f0d5b519c03b35bb1578c33d726460f63abb91ea0c515f87e8d6d76be001d",
+      "height": 1080,
+      "images_sha256": "e23894090e1a7ace39e795e7b784fc87730719a8bcbb08cc350d8e8a8ff3ae6d",
+      "n_images": 525,
+      "split": "dev",
+      "width": 1920
+    },
+    "MOT20-01": {
+      "dataset": "MOT20",
+      "dir": "MOT20/train/MOT20-01",
+      "fps": 25.0,
+      "frame_count": 429,
+      "gt_sha256": "89fd0196d67a5eb6011a470dc2a49b02255403b49e8848031cdf99add8a36d9c",
+      "height": 1080,
+      "images_sha256": "7d70d076c46e49fa02cc76bbfbdd9a02239caadfefbfc177dd9b4ad74ba45433",
+      "n_images": 429,
+      "split": "test",
+      "width": 1920
+    },
+    "MOT20-02": {
+      "dataset": "MOT20",
+      "dir": "MOT20/train/MOT20-02",
+      "fps": 25.0,
+      "frame_count": 2782,
+      "gt_sha256": "10abe457a67d9919a9cbfe821d3619c8e6174c2b0ed7ecf4cb68c1fd6cad58de",
+      "height": 1080,
+      "images_sha256": "8d7713d46e7b2da86ab4b32f90dad9ea035b6d1b0052b1bbe1b87e40a66cace0",
+      "n_images": 2782,
+      "split": "test",
+      "width": 1920
+    },
+    "MOT20-03": {
+      "dataset": "MOT20",
+      "dir": "MOT20/train/MOT20-03",
+      "fps": 25.0,
+      "frame_count": 2405,
+      "gt_sha256": "350fbc950c6dc00e3cc8a71358b3d0b8958906c8be57a7bf5fb9db34bff70f28",
+      "height": 880,
+      "images_sha256": "d12f166dc0c3d013789338ad5620c1cf11834f47d4db3ab7862f55dd2d200ff3",
+      "n_images": 2405,
+      "split": "test",
+      "width": 1173
+    },
+    "MOT20-05": {
+      "dataset": "MOT20",
+      "dir": "MOT20/train/MOT20-05",
+      "fps": 25.0,
+      "frame_count": 3315,
+      "gt_sha256": "6da1ad9a528c39203c181aa93fc492d194358c50856695a7fe17656c928f5c17",
+      "height": 1080,
+      "images_sha256": "9f01239f0cc354ba7faa962c14f47827de5b6d70b568c2cda2d593e79ba724c8",
+      "n_images": 3315,
+      "split": "test",
+      "width": 1654
+    }
+  }
+}
