@@ -58,7 +58,9 @@ def evaluate(gt: Tracks, pred: Tracks, iou_thr: float = 0.5) -> dict[str, float]
     Every frame that appears in either set is fed to the accumulator, so frames with ground
     truth but no predictions count as misses and frames with predictions only count as false
     positives. `motp` is motmetrics' mean distance over matches, i.e. mean (1 - IoU): lower is
-    better. Ratios are nan when their denominator is zero (for example no ground truth at all).
+    better. Predictions matched to non-pedestrian or distractor GT are not removed the way the
+    MOTChallenge devkit does, so MOTA and IDF1 here are not comparable to leaderboard numbers.
+    Ratios are nan when their denominator is zero (for example no ground truth at all).
     """
     acc = mm.MOTAccumulator(auto_id=False)
     g_rows, p_rows = _by_frame(gt), _by_frame(pred)

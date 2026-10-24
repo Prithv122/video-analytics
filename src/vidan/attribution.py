@@ -44,7 +44,7 @@ def _frame_groups(t: Tracks) -> dict[int, np.ndarray]:
 
 
 def frame_assignment(pred: Tracks, gt: Tracks, iou_thr: float = 0.5) -> dict[tuple[int, int], int]:
-    """Map `(frame, pred_id)` -> `gt_id`: per frame, Hungarian on 1 - IoU, keeping IoU >= thr."""
+    """Map `(frame, pred_id)` -> `gt_id`: per frame, Hungarian over pairs with IoU >= thr."""
     out: dict[tuple[int, int], int] = {}
     if len(pred) == 0 or len(gt) == 0:
         return out
@@ -53,7 +53,10 @@ def frame_assignment(pred: Tracks, gt: Tracks, iou_thr: float = 0.5) -> dict[tup
     for f in sorted(p_groups.keys() & g_groups.keys()):
         pi, gi = p_groups[f], g_groups[f]
         iou = iou_xywh(pred.xywh[pi], gt.xywh[gi])
-        rows, cols = linear_sum_assignment(1.0 - iou)
+        # Pairs below the threshold cost more than any set of valid ones, so a valid match is
+        # never traded away for an invalid one; leftover invalid pairs are dropped below.
+        big = float(max(iou.shape) + 1)
+        rows, cols = linear_sum_assignment(np.where(iou >= iou_thr, 1.0 - iou, big))
         ok = iou[rows, cols] >= iou_thr
         out.update(
             zip(

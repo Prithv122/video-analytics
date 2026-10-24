@@ -223,6 +223,21 @@ def test_unknown_matching_mode_rejected():
         attribute(Tracks.empty(), Tracks.empty(), LINE, NAIVE, TOL, matching="nope")
 
 
+def test_threshold_applies_before_the_solve_so_valid_matches_are_not_traded_away():
+    # Solving over all pairs and thresholding afterwards loses the match for person 11.
+    g = np.array(
+        [[8.2894, 1.7484, 20, 40], [4.024, 1.918, 20, 40], [1.3796, 5.3697, 20, 40]], float
+    )
+    p = np.array(
+        [[-0.4511, 0.3175, 20, 40], [3.5351, -2.7073, 20, 40], [1.4343, 3.3586, 20, 40]], float
+    )
+    gt = Tracks(np.ones(3, int), np.array([1, 2, 3]), g, np.ones(3))
+    pred = Tracks(np.ones(3, int), np.array([11, 12, 13]), p, np.ones(3))
+    iou = iou_xywh(p, g)
+    assert iou[0, 1] >= 0.5 and iou[1, 0] >= 0.5 and iou[2, 2] >= 0.5
+    assert frame_assignment(pred, gt) == {(1, 11): 2, (1, 12): 1, (1, 13): 3}
+
+
 def test_frame_assignment_is_one_to_one_per_frame_on_random_crowds():
     rng = np.random.default_rng(1)
     rows = []
