@@ -82,7 +82,7 @@ Nearly all the error is extra crossings, and nearly none of it is identity switc
 - **Jitter on the line.** One MOT17-04 track crossed `h_mid` 57 times under the naive rule: a
   person standing on it. The band removes this (MOT17-04 `h_mid` extra crossings 62 → 2).
 - **Anchor jumps under occlusion.** With the band on, most remaining extra crossings happen at a
-  frame where the predicted box overlaps no annotated box at IoU ≥ 0.5 (32 of 45). The detector
+  frame where the predicted box overlaps no annotated box at IoU ≥ 0.5 (34 of 45). The detector
   draws the visible part of a person; MOT ground truth draws the whole body, legs included, behind
   occluders. When the legs disappear the box's bottom edge jumps up by more than the band, and back
   when they reappear: a crossing nobody made. MOT17-09's `h_mid` has 0 true crossings and still 19
