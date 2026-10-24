@@ -64,10 +64,10 @@ downstream step uses (`results/equivalence.csv`):
 | Small | 49 / 50 | 2,336 | 0.897 | 0.99981 | 0.9984 |
 
 The plan says "matched boxes IoU ≥ 0.99". Read literally, that is every matched box, so the
-equivalence clause of H4 **fails for both models**: one Nano box and a handful of Small boxes
-(two frames of MOT17-02) fall below it, all low-score boxes. The plan does not name the threshold
+equivalence clause of H4 **fails for both models**: Nano falls below it in one frame (MOT17-09
+frame 170) and Small in two (MOT17-02 frames 223 and 400). The plan does not name the threshold
 for this check. At 0.30 (`equivalence_thr0.30.csv`) Nano passes (min 0.9946) and Small still fails
 (min 0.9805), so H4, which needs both models, fails under either reading. The rule is not being
 relaxed after the fact; the percentile columns are descriptive only. The two backends agree on
-the typical box to four decimal places and disagree on a few borderline boxes, which is what a
-different summation order in fp32 does to a box sitting near a score threshold.
+the typical box to about four decimal places of IoU and disagree on a few boxes. The per-frame
+file records no scores, so whether those are low-score boxes is not checked.
