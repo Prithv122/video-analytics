@@ -1,0 +1,3 @@
+config,threshold,passed,min_matched_iou,frac_frames_equal_count,n_frames,n_frames_equal_count,n_matched,n_unmatched_torch,n_unmatched_onnx,mean_matched_iou,p01_matched_iou,frac_matched_iou_ge_min
+N,0.1,False,0.9831802589376443,1.0,50,50,2787,0,0,0.9999589025605476,0.9992725865433433,0.9992823824901328
+S,0.1,False,0.8970286448464146,0.98,50,49,2336,2,0,0.9998145929984154,0.9983503647719553,0.997431506849315
