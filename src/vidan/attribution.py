@@ -1,10 +1,12 @@
 """Attribute counting errors to their cause (numpy + scipy only).
 
-Predicted and ground-truth crossings are matched with `match_events`; every unmatched event is
-then explained using the per-frame box assignment between predicted ids and ground-truth ids.
+Predicted and ground-truth crossings are matched (by identity, or by time only); every
+unmatched event is then explained using the per-frame box assignment between predicted ids
+and ground-truth ids.
 """
 
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -12,7 +14,7 @@ from scipy.optimize import linear_sum_assignment
 
 from vidan.counting import Crossing, Rule, count_line
 from vidan.geometry import Line
-from vidan.metrics import EventMatch, match_events
+from vidan.metrics import EventMatch, event_match_from_pairs, match_events
 from vidan.mot import Tracks
 
 FP_CATEGORIES = ("duplicate", "spurious", "unmatched")
@@ -23,17 +25,22 @@ def iou_xywh(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Pairwise IoU of (n, 4) and (m, 4) top-left xywh boxes -> (n, m)."""
     a = np.asarray(a, dtype=np.float64).reshape(-1, 4)
     b = np.asarray(b, dtype=np.float64).reshape(-1, 4)
-    ax2, ay2 = a[:, 0] + a[:, 2], a[:, 1] + a[:, 3]
-    bx2, by2 = b[:, 0] + b[:, 2], b[:, 1] + b[:, 3]
-    iw = np.clip(
-        np.minimum(ax2[:, None], bx2[None]) - np.maximum(a[:, 0, None], b[None, :, 0]), 0, None
-    )
-    ih = np.clip(
-        np.minimum(ay2[:, None], by2[None]) - np.maximum(a[:, 1, None], b[None, :, 1]), 0, None
-    )
-    inter = iw * ih
-    union = (a[:, 2] * a[:, 3])[:, None] + (b[:, 2] * b[:, 3])[None] - inter
-    return np.divide(inter, union, out=np.zeros_like(inter), where=union > 0)
+    ax, ay, aw, ah = a.T
+    bx, by, bw, bh = b.T
+    iw = np.minimum((ax + aw)[:, None], bx + bw) - np.maximum(ax[:, None], bx)
+    ih = np.minimum((ay + ah)[:, None], by + bh) - np.maximum(ay[:, None], by)
+    inter = np.maximum(iw, 0.0) * np.maximum(ih, 0.0)
+    union = (aw * ah)[:, None] + bw * bh - inter
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(union > 0, inter / union, 0.0)
+
+
+def _frame_groups(t: Tracks) -> dict[int, np.ndarray]:
+    """Row indices of each frame, from one stable sort."""
+    order = np.argsort(t.frame, kind="stable")
+    frames, starts = np.unique(t.frame[order], return_index=True)
+    ends = np.append(starts[1:], len(order))
+    return {int(f): order[s:e] for f, s, e in zip(frames, starts, ends, strict=True)}
 
 
 def frame_assignment(pred: Tracks, gt: Tracks, iou_thr: float = 0.5) -> dict[tuple[int, int], int]:
@@ -41,14 +48,85 @@ def frame_assignment(pred: Tracks, gt: Tracks, iou_thr: float = 0.5) -> dict[tup
     out: dict[tuple[int, int], int] = {}
     if len(pred) == 0 or len(gt) == 0:
         return out
-    for f in np.intersect1d(pred.frame, gt.frame).tolist():
-        pi, gi = np.flatnonzero(pred.frame == f), np.flatnonzero(gt.frame == f)
+    p_groups, g_groups = _frame_groups(pred), _frame_groups(gt)
+    p_ids, g_ids = pred.track_id, gt.track_id
+    for f in sorted(p_groups.keys() & g_groups.keys()):
+        pi, gi = p_groups[f], g_groups[f]
         iou = iou_xywh(pred.xywh[pi], gt.xywh[gi])
         rows, cols = linear_sum_assignment(1.0 - iou)
-        for r, c in zip(rows, cols, strict=True):
-            if iou[r, c] >= iou_thr:
-                out[(int(f), int(pred.track_id[pi[r]]))] = int(gt.track_id[gi[c]])
+        ok = iou[rows, cols] >= iou_thr
+        out.update(
+            zip(
+                zip([f] * int(ok.sum()), p_ids[pi[rows[ok]]].tolist(), strict=True),
+                g_ids[gi[cols[ok]]].tolist(),
+                strict=True,
+            )
+        )
     return out
+
+
+def _index_assignment(
+    assign: dict[tuple[int, int], int],
+) -> tuple[dict[int, list[tuple[int, int]]], dict[int, list[tuple[int, int]]]]:
+    """Per pred id -> [(frame, gt_id)] and per gt id -> [(frame, pred_id)]."""
+    by_pred: dict[int, list[tuple[int, int]]] = {}
+    by_gt: dict[int, list[tuple[int, int]]] = {}
+    for (f, pid), gid in assign.items():
+        by_pred.setdefault(pid, []).append((f, gid))
+        by_gt.setdefault(gid, []).append((f, pid))
+    return by_pred, by_gt
+
+
+def _identity(obs: list[tuple[int, int]], frame: int, tol_frames: int) -> int | None:
+    """GT id most often assigned within `tol_frames` of `frame` (ties: smallest id), or None."""
+    near = Counter(g for f, g in obs if abs(f - frame) <= tol_frames)
+    if not near:
+        return None
+    return min(near, key=lambda k: (-near[k], k))
+
+
+def match_events_identity(
+    pred_tracks: Tracks,
+    gt_tracks: Tracks,
+    pred_events: Sequence[Crossing],
+    gt_events: Sequence[Crossing],
+    tol_frames: int,
+    iou_thr: float = 0.5,
+    assignment: dict[tuple[int, int], int] | None = None,
+) -> EventMatch:
+    """Like `match_events`, but a pair must also be the same person.
+
+    A predicted crossing (p, f, d) may match a GT crossing (g, f', d') only if d == d',
+    |f - f'| <= tol_frames and the GT identity behind track p around f (majority vote of the
+    per-frame box assignment over [f - tol, f + tol], ties to the smallest id) is g. Among the
+    allowed pairs the match is one-to-one and minimises total |f - f'|. Pass `assignment` (from
+    `frame_assignment`) to skip recomputing it.
+    """
+    if tol_frames < 0:
+        raise ValueError("tol_frames must be >= 0")
+    if assignment is None:
+        assignment = frame_assignment(pred_tracks, gt_tracks, iou_thr)
+    by_pred, _ = _index_assignment(assignment)
+    who = [_identity(by_pred.get(e.track_id, []), e.frame, tol_frames) for e in pred_events]
+    pairs: list[tuple[Crossing, Crossing]] = []
+    for direction in (1, -1):
+        pi = [i for i, e in enumerate(pred_events) if e.direction == direction]
+        gj = [j for j, e in enumerate(gt_events) if e.direction == direction]
+        if not pi or not gj:
+            continue
+        pf = np.array([pred_events[i].frame for i in pi])
+        gf = np.array([gt_events[j].frame for j in gj])
+        diff = np.abs(pf[:, None] - gf[None, :])
+        same = np.array([[who[i] == gt_events[j].track_id for j in gj] for i in pi])
+        allowed = same & (diff <= tol_frames)
+        big = min(len(pi), len(gj)) * tol_frames + 1
+        rows, cols = linear_sum_assignment(np.where(allowed, diff, big))
+        pairs.extend(
+            (pred_events[pi[r]], gt_events[gj[c]])
+            for r, c in zip(rows, cols, strict=True)
+            if allowed[r, c]
+        )
+    return event_match_from_pairs(pairs, len(pred_events), len(gt_events))
 
 
 @dataclass(frozen=True)
@@ -56,6 +134,7 @@ class Attribution:
     """Every unmatched crossing with its cause.
 
     `fp_events` / `fn_events` hold `(crossing, category)`; `fp` / `fn` count them per category.
+    `assignment` is the `(frame, pred_id) -> gt_id` map the analysis used, for reuse.
     """
 
     match: EventMatch
@@ -63,6 +142,7 @@ class Attribution:
     fn: dict[str, int]
     fp_events: list[tuple[Crossing, str]] = field(default_factory=list)
     fn_events: list[tuple[Crossing, str]] = field(default_factory=list)
+    assignment: dict[tuple[int, int], int] = field(default_factory=dict)
 
     @property
     def switch_attributed(self) -> int:
@@ -79,12 +159,17 @@ def attribute_errors(
     iou_thr: float = 0.5,
     anchor: str = "bottom_center",
     gt_rule: Rule | None = None,
+    matching: str = "identity",
 ) -> Attribution:
     """Count, match and classify the crossing errors of one line.
 
     Predictions are counted with `rule`; ground truth always with `gt_rule` (naive when None:
     every annotated crossing is real), so a band that suppresses a genuine back-and-forth shows
     up as a false negative.
+
+    `matching="identity"` (default) uses `match_events_identity`: crossings only match when they
+    are the same person, so a miss of one person cannot cancel against a double count of
+    another. `matching="time"` uses `match_events` (frame proximity and direction only).
 
     Unmatched predicted crossing (track p, frame f, direction d), with g the ground-truth id most
     often assigned to p within `tol_frames` of f (ties: smallest id):
@@ -100,14 +185,21 @@ def attribute_errors(
     """
     pred_count = count_line(pred_tracks, line, rule, anchor)
     gt_count = count_line(gt_tracks, line, gt_rule or Rule.naive(), anchor)
-    match = match_events(pred_count.events, gt_count.events, tol_frames)
     assign = frame_assignment(pred_tracks, gt_tracks, iou_thr)
-
-    by_pred: dict[int, list[tuple[int, int]]] = {}
-    by_gt: dict[int, list[tuple[int, int]]] = {}
-    for (f, pid), gid in assign.items():
-        by_pred.setdefault(pid, []).append((f, gid))
-        by_gt.setdefault(gid, []).append((f, pid))
+    if matching == "identity":
+        match = match_events_identity(
+            pred_tracks,
+            gt_tracks,
+            pred_count.events,
+            gt_count.events,
+            tol_frames,
+            assignment=assign,
+        )
+    elif matching == "time":
+        match = match_events(pred_count.events, gt_count.events, tol_frames)
+    else:
+        raise ValueError(f"matching must be 'identity' or 'time', got {matching!r}")
+    by_pred, by_gt = _index_assignment(assign)
     gt_events: dict[int, list[Crossing]] = {}
     for e in gt_count.events:
         gt_events.setdefault(e.track_id, []).append(e)
@@ -119,11 +211,10 @@ def attribute_errors(
     for e in pred_count.events:
         if _key(e) in matched_pred:
             continue
-        near = Counter(g for f, g in by_pred.get(e.track_id, []) if abs(f - e.frame) <= tol_frames)
-        if not near:
+        g = _identity(by_pred.get(e.track_id, []), e.frame, tol_frames)
+        if g is None:
             fp_events.append((e, "unmatched"))
             continue
-        g = min(near, key=lambda k: (-near[k], k))
         same_way = any(
             c.direction == e.direction and abs(c.frame - e.frame) <= tol_frames
             for c in gt_events.get(g, [])
@@ -151,6 +242,7 @@ def attribute_errors(
         fn={c: sum(k == c for _, k in fn_events) for c in FN_CATEGORIES},
         fp_events=fp_events,
         fn_events=fn_events,
+        assignment=assign,
     )
 
 

@@ -66,7 +66,9 @@ def match_events(
 
     Within a direction the Hungarian algorithm minimises total `|frame difference|`; a pair
     further apart than `tol_frames` is never a match (a difference equal to `tol_frames` is).
-    Track ids are ignored. With no events on either side precision, recall and F1 are all 1.0;
+    Track ids are ignored, so a missed crossing by one person and a double count of another
+    person close in time can match each other; `attribution.match_events_identity` forbids that.
+    With no events on either side precision, recall and F1 are all 1.0;
     if only one side is empty the undefined ratio is 0.0.
     """
     if tol_frames < 0:
@@ -88,10 +90,17 @@ def match_events(
         pairs.extend(
             (p[r], g[c]) for r, c in zip(rows, cols, strict=True) if diff[r, c] <= tol_frames
         )
+    return event_match_from_pairs(pairs, len(pred_events), len(gt_events))
+
+
+def event_match_from_pairs(
+    pairs: Sequence[tuple[Crossing, Crossing]], n_pred: int, n_gt: int
+) -> EventMatch:
+    """Build an `EventMatch` from matched `(pred, gt)` pairs and the two event counts."""
     tp = len(pairs)
-    fp = len(pred_events) - tp
-    fn = len(gt_events) - tp
-    both_empty = not pred_events and not gt_events
+    fp = n_pred - tp
+    fn = n_gt - tp
+    both_empty = n_pred == 0 and n_gt == 0
     precision = _ratio(tp, tp + fp, both_empty)
     recall = _ratio(tp, tp + fn, both_empty)
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0

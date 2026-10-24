@@ -1,7 +1,8 @@
 import numpy as np
+import pytest
 
 from vidan.attribution import attribute_errors as attribute
-from vidan.attribution import frame_assignment, iou_xywh
+from vidan.attribution import frame_assignment, iou_xywh, match_events_identity
 from vidan.counting import Crossing, Rule
 from vidan.geometry import Line
 from vidan.mot import Tracks, tracks_from_rows
@@ -153,3 +154,88 @@ def test_categories_sum_to_match_counts_and_switch_property_adds_both_sides():
     assert (a.fp["duplicate"], a.fn["fragmented"]) == (1, 1)
     assert a.switch_attributed == 2
     assert a.match.cancelled == 1
+
+
+def miss_and_duplicate():
+    """Person A is never tracked (GT crossing at 6); person B is double counted by id 9.
+
+    Both predicted crossings (frames 6 and 8) lie within tolerance of both GT crossings (frame 6).
+    """
+    line = Line((0, 0), (300, 0))
+    gt = tr(
+        boxes(1, r(1, 5), -5),
+        boxes(1, r(6, 13), 5),  # A
+        boxes(2, r(1, 5), -1, 245),
+        boxes(2, r(6, 13), 1, 245),  # B
+    )
+    pred = tr(
+        boxes(8, r(1, 5), -1, 245),
+        boxes(8, [6], 1, 245),  # follows B, crosses at 6
+        boxes(9, [7], -1, 245),
+        boxes(9, r(8, 13), 1, 245),  # takes over B, crosses again at 8
+    )
+    return line, gt, pred
+
+
+def test_time_matching_hides_a_miss_cancelled_by_a_duplicate():
+    line, gt, pred = miss_and_duplicate()
+    a = attribute(pred, gt, line, NAIVE, TOL, matching="time")
+    assert (a.match.tp, a.match.fp, a.match.fn) == (2, 0, 0) and a.match.f1 == 1.0
+
+
+def test_identity_matching_exposes_it():
+    line, gt, pred = miss_and_duplicate()
+    a = attribute(pred, gt, line, NAIVE, TOL)  # identity is the default
+    assert (a.match.tp, a.match.fp, a.match.fn, a.match.cancelled) == (1, 1, 1, 1)
+    assert a.match.f1 == pytest.approx(0.5)
+    assert a.fp_events == [(Crossing(9, 8, 1), "duplicate")]
+    assert a.fn_events == [(Crossing(1, 6, 1), "missed")]
+    assert a.match.pairs[0][0].track_id == 8 and a.match.pairs[0][1].track_id == 2
+
+
+def test_identity_equals_time_on_a_clean_single_person_fixture():
+    gt, pred = tr(person(1)), tr(person(7))
+    ident = attribute(pred, gt, LINE, NAIVE, TOL)
+    time = attribute(pred, gt, LINE, NAIVE, TOL, matching="time")
+    assert ident.match == time.match
+    assert ident.match.tp == 1 and ident.match.f1 == 1.0
+
+
+def test_match_events_identity_direct_and_reuses_assignment():
+    line, gt, pred = miss_and_duplicate()
+    a = attribute(pred, gt, line, NAIVE, TOL)
+    pred_events = [Crossing(8, 6, 1), Crossing(9, 8, 1)]
+    gt_events = [Crossing(1, 6, 1), Crossing(2, 6, 1)]
+    m = match_events_identity(pred, gt, pred_events, gt_events, TOL, assignment=a.assignment)
+    assert (m.tp, m.fp, m.fn) == (1, 1, 1)
+    assert m == match_events_identity(pred, gt, pred_events, gt_events, TOL)
+    # a wrong direction never matches, even for the right person
+    flipped = match_events_identity(pred, gt, [Crossing(8, 6, -1)], gt_events, TOL)
+    assert flipped.tp == 0
+    # a predicted crossing with no GT identity behind it cannot match
+    assert match_events_identity(pred, gt, [Crossing(99, 6, 1)], gt_events, TOL).tp == 0
+    empty = match_events_identity(Tracks.empty(), Tracks.empty(), [], [], TOL)
+    assert empty.f1 == 1.0
+
+
+def test_unknown_matching_mode_rejected():
+    with pytest.raises(ValueError):
+        attribute(Tracks.empty(), Tracks.empty(), LINE, NAIVE, TOL, matching="nope")
+
+
+def test_frame_assignment_is_one_to_one_per_frame_on_random_crowds():
+    rng = np.random.default_rng(1)
+    rows = []
+    for f in range(1, 40):
+        for tid in range(1, int(rng.integers(5, 30))):
+            rows.append((f, tid, *rng.uniform(0, 200, 2), 20, 40))
+    gt = tracks_from_rows(rows)
+    jitter = [
+        (f, tid + 1000, x + rng.normal(0, 2), y + rng.normal(0, 2), w, h)
+        for f, tid, x, y, w, h in rows
+    ]
+    assign = frame_assignment(tracks_from_rows(jitter), gt)
+    assert len(assign) > 0.9 * len(rows)
+    seen = {}
+    for (f, pid), gid in assign.items():
+        assert seen.setdefault((f, gid), pid) == pid  # no gt id used twice in one frame
