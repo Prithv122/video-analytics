@@ -79,11 +79,122 @@ def _run_layout(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_export(subparsers) -> None:
+    p = subparsers.add_parser("export", help="export a detector config to models/<config>.onnx")
+    p.add_argument("--config", required=True, choices=["S", "N", "S8", "N8"])
+    p.add_argument("--models-dir", type=Path, default=Path("models"))
+    p.set_defaults(func=_run_export)
+
+
+def _run_export(args: argparse.Namespace) -> int:
+    from vidan import runs
+
+    t0 = time.monotonic()
+    path = runs.export_config(args.config, args.models_dir)
+    print(f"wrote {path} ({path.stat().st_size / 1e6:.1f} MB) in {time.monotonic() - t0:,.0f} s")
+    return 0
+
+
+def _add_detect(subparsers) -> None:
+    p = subparsers.add_parser(
+        "detect", help="cache person detections (score >= 0.10) per sequence with ONNX Runtime"
+    )
+    p.add_argument("--config", required=True, choices=["S", "N", "S8", "N8"])
+    p.add_argument("--split", choices=["dev", "test", "all"], default="dev")
+    p.add_argument("--threads", type=int, default=12)
+    p.add_argument("--models-dir", type=Path, default=Path("models"))
+    p.add_argument("--cache-root", type=Path, default=Path("data/cache"))
+    p.set_defaults(func=_run_detect)
+
+
+def _run_detect(args: argparse.Namespace) -> int:
+    from vidan import runs
+
+    def log(msg: str) -> None:
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}", flush=True)
+
+    runs.detect_split(
+        args.config,
+        args.split,
+        threads=args.threads,
+        models_dir=args.models_dir,
+        cache_root=args.cache_root,
+        log=log,
+    )
+    return 0
+
+
+def _add_bench(subparsers) -> None:
+    p = subparsers.add_parser(
+        "bench", help="CPU speed benchmark behind a quiet-machine gate (EVAL_PLAN: Speed benchmark)"
+    )
+    p.add_argument("--threads", type=int, default=12)
+    p.add_argument("--frames", type=int, default=100)
+    p.add_argument("--warmup", type=int, default=10)
+    p.add_argument("--repeats", type=int, default=3)
+    p.add_argument(
+        "--max-wait", type=float, default=30.0, help="minutes to wait for a quiet machine"
+    )
+    p.add_argument(
+        "--force", action="store_true", help="run past the gate; rows get contended=true"
+    )
+    p.add_argument("--configs", nargs="+", help="subset of the benchmark configs")
+    p.add_argument("--out", type=Path, default=Path("results/bench.csv"))
+    p.set_defaults(func=_run_bench)
+
+
+def _run_bench(args: argparse.Namespace) -> int:
+    from vidan import speedbench
+
+    return speedbench.run_bench(args)
+
+
+def _add_equiv(subparsers) -> None:
+    p = subparsers.add_parser(
+        "equiv", help="ONNX fp32 vs PyTorch detections on 50 evenly spaced dev frames"
+    )
+    p.add_argument("--frames", type=int, default=50)
+    p.add_argument("--threads", type=int, default=6)
+    p.add_argument("--configs", nargs="+", default=["N", "S"], choices=["N", "S"])
+    p.add_argument("--out", type=Path, default=Path("results/equivalence.csv"))
+    p.set_defaults(func=_run_equiv)
+
+
+def _run_equiv(args: argparse.Namespace) -> int:
+    from vidan import speedbench
+
+    return speedbench.run_equiv(args)
+
+
+def _add_eval(subparsers) -> None:
+    p = subparsers.add_parser("eval", help="the frozen evaluation: tune | test | claims | frontier")
+    p.add_argument("stage", choices=["tune", "test", "claims", "frontier"])
+    p.add_argument("--configs", nargs="+", help="restrict to these detector configs (S N S8 N8)")
+    p.add_argument("--seqs", nargs="+", help="restrict to these sequences (smoke runs only)")
+    p.add_argument("--ks", nargs="+", type=int, help="restrict the frame-skip grid (smoke runs)")
+    p.add_argument("--taus", nargs="+", type=float, help="restrict the threshold grid (smoke runs)")
+    p.add_argument("--results-dir", type=Path, default=Path("results"))
+    p.add_argument("--cache-root", type=Path, default=Path("data/cache"))
+    p.add_argument("--raw-root", type=Path, default=Path("data/raw"))
+    p.set_defaults(func=_run_eval)
+
+
+def _run_eval(args: argparse.Namespace) -> int:
+    from vidan import evalrun
+
+    return evalrun.run_cli(args)
+
+
 # One entry per subcommand; other modules add their own `_add_<name>` here.
 _REGISTRARS: list[Callable[[argparse._SubParsersAction], None]] = [
     _add_fetch,
     _add_verify,
     _add_layout,
+    _add_export,
+    _add_detect,
+    _add_bench,
+    _add_equiv,
+    _add_eval,
 ]
 
 
