@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from vidan.counting import Crossing, Rule, count_line
+from vidan.counting import Crossing, LineCount, Rule, count_line
 from vidan.geometry import Line
 from vidan.metrics import EventMatch, event_match_from_pairs, match_events
 from vidan.mot import Tracks
@@ -134,7 +134,8 @@ class Attribution:
     """Every unmatched crossing with its cause.
 
     `fp_events` / `fn_events` hold `(crossing, category)`; `fp` / `fn` count them per category.
-    `assignment` is the `(frame, pred_id) -> gt_id` map the analysis used, for reuse.
+    `assignment` is the `(frame, pred_id) -> gt_id` map the analysis used, for reuse;
+    `pred_events` / `gt_events` are the counted crossings that were matched.
     """
 
     match: EventMatch
@@ -143,6 +144,8 @@ class Attribution:
     fp_events: list[tuple[Crossing, str]] = field(default_factory=list)
     fn_events: list[tuple[Crossing, str]] = field(default_factory=list)
     assignment: dict[tuple[int, int], int] = field(default_factory=dict)
+    pred_events: tuple[Crossing, ...] = ()
+    gt_events: tuple[Crossing, ...] = ()
 
     @property
     def switch_attributed(self) -> int:
@@ -160,6 +163,8 @@ def attribute_errors(
     anchor: str = "bottom_center",
     gt_rule: Rule | None = None,
     matching: str = "identity",
+    assignment: dict[tuple[int, int], int] | None = None,
+    gt_count: LineCount | None = None,
 ) -> Attribution:
     """Count, match and classify the crossing errors of one line.
 
@@ -170,6 +175,10 @@ def attribute_errors(
     `matching="identity"` (default) uses `match_events_identity`: crossings only match when they
     are the same person, so a miss of one person cannot cancel against a double count of
     another. `matching="time"` uses `match_events` (frame proximity and direction only).
+
+    `assignment` (from `frame_assignment`) and `gt_count` (the ground truth's `LineCount` for this
+    line, counted with `gt_rule`) may be passed in when a caller scores many predictions against
+    the same truth; they are computed here otherwise.
 
     Unmatched predicted crossing (track p, frame f, direction d), with g the ground-truth id most
     often assigned to p within `tol_frames` of f (ties: smallest id):
@@ -184,8 +193,11 @@ def attribute_errors(
       - `missed`: no track on one side, a detection gap.
     """
     pred_count = count_line(pred_tracks, line, rule, anchor)
-    gt_count = count_line(gt_tracks, line, gt_rule or Rule.naive(), anchor)
-    assign = frame_assignment(pred_tracks, gt_tracks, iou_thr)
+    if gt_count is None:
+        gt_count = count_line(gt_tracks, line, gt_rule or Rule.naive(), anchor)
+    assign = (
+        assignment if assignment is not None else frame_assignment(pred_tracks, gt_tracks, iou_thr)
+    )
     if matching == "identity":
         match = match_events_identity(
             pred_tracks,
@@ -243,6 +255,8 @@ def attribute_errors(
         fp_events=fp_events,
         fn_events=fn_events,
         assignment=assign,
+        pred_events=pred_count.events,
+        gt_events=gt_count.events,
     )
 
 
