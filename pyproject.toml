@@ -24,6 +24,7 @@ vision = [
     "opencv-python-headless>=4.10",
     "rfdetr==1.11.2",
     "supervision==0.31.2",
+    "trackers==2.6.1",
 ]
 
 [build-system]
@@ -32,6 +33,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vidan"]
+
+# `trackers` (Apache-2.0) is where supervision's ByteTrack moved to; it declares the GUI build of
+# OpenCV, which would clash with the headless wheel above, so that requirement is dropped.
+[tool.uv]
+override-dependencies = ["opencv-python; sys_platform == 'never'"]
 
 [dependency-groups]
 dev = [

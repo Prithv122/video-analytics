@@ -13,6 +13,9 @@ resolution-markers = [
     "python_full_version < '3.13' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "opencv-python", marker = "sys_platform == 'never'" }]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.5"
@@ -1383,6 +1386,15 @@ wheels = [
 ]
 
 [[package]]
+name = "opencv-python"
+version = "5.0.0.93"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/4c/a438d23e09ce2033c09f7b784ad2fbdb0adf529e434101ed28f142226f98/opencv_python-5.0.0.93.tar.gz", hash = "sha256:66aac3e5b5faa48d4025816592f3af19e4bfc2c68dec067bae2dbb4ca10aa9e2", size = 81802749, upload-time = "2026-07-02T06:59:53.815Z" }
+
+[[package]]
 name = "opencv-python-headless"
 version = "5.0.0.93"
 source = { registry = "https://pypi.org/simple" }
@@ -2255,6 +2267,24 @@ wheels = [
 ]
 
 [[package]]
+name = "trackers"
+version = "2.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "opencv-python", marker = "sys_platform == 'never'" },
+    { name = "pydeprecate" },
+    { name = "requests" },
+    { name = "rich" },
+    { name = "scipy" },
+    { name = "supervision" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/af/15/9aaaf90700b2464fc13553811cfb7620d84ede37c08870cdd68a4370e5e5/trackers-2.6.1.tar.gz", hash = "sha256:e8363838384cea25967b4501fff2565cc9c0e234a6f7eaea3ba5343b65a30561", size = 189426, upload-time = "2026-09-25T11:00:45.34Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/16/237ec75a634fc7e58c0470bdded80846d92979939ee66af804dae2161114/trackers-2.6.1-py3-none-any.whl", hash = "sha256:b5188de630f449958be3ce787fbb0375c69cfde094b6e4b4329cd79a98108501", size = 224724, upload-time = "2026-09-25T11:00:43.688Z" },
+]
+
+[[package]]
 name = "transformers"
 version = "5.20.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2369,6 +2399,7 @@ vision = [
     { name = "opencv-python-headless" },
     { name = "rfdetr" },
     { name = "supervision" },
+    { name = "trackers" },
 ]
 
 [package.dev-dependencies]
@@ -2388,6 +2419,7 @@ requires-dist = [
     { name = "rfdetr", marker = "extra == 'vision'", specifier = "==1.11.2" },
     { name = "scipy", specifier = ">=1.14" },
     { name = "supervision", marker = "extra == 'vision'", specifier = "==0.31.2" },
+    { name = "trackers", marker = "extra == 'vision'", specifier = "==2.6.1" },
 ]
 provides-extras = ["vision"]
 
