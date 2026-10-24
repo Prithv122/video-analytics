@@ -30,6 +30,8 @@ IDF1 / ID switches · numpy · pytest · ruff. **No Ultralytics** (AGPL-3.0).
   supervision imports. It runs in CI without model weights or video.
 - Ground-truth crossings come from the annotated GT tracks, through the **same** counting code
   as predictions, with the same line. Counting-rule differences can't masquerade as accuracy.
+  Truth is always counted with the `naive` rule (every crossing of an annotated anchor); the rule
+  under test applies to predictions only, so a band that suppresses a real back-and-forth is an error.
 - Lines and zones are placed by a mechanical rule from frame size and GT only, written down before
   any prediction exists on that sequence. No line is moved after seeing a result.
 - Every number in the README comes from a committed script and a committed results file.
