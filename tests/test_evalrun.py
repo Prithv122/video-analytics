@@ -32,8 +32,10 @@ def fake_sources() -> ev.Sources:
         gt=lambda seq: GT,
         fps=lambda seq: 10.0,
         n_frames=lambda seq: 12,
+        size=lambda seq: (100.0, 100.0),
         lines=lambda seq: LINES,
         track=lambda per_frame, fps, k, tau: BY_TAU[tau],
+        n_bad_frames=lambda config, seq: 2 if seq == "A" else 0,
     )
 
 
@@ -473,7 +475,6 @@ def test_frontier_marks_the_cheapest_point_within_tolerance(tmp_path):
         [
             {"config": "S", "backend": "onnx", "k": 1, "detector_fps": 5.0, "pipeline_fps": 4.0},
             {"config": "N", "backend": "onnx", "k": 1, "detector_fps": 20.0, "t_track_count": 0.05},
-            {"config": "N", "backend": "onnx", "k": 3, "detector_fps": 20.0, "pipeline_fps": 50.0},
         ],
     )
     rows = ev.frontier(tmp_path, log=lambda s: None)
@@ -490,3 +491,99 @@ def test_csv_round_trip_parses_known_columns(tmp_path):
     (row,) = ev.read_csv(tmp_path / "x.csv")
     assert row == {"config": "S", "k": 2, "tau": 0.3, "tp": 5, "note": "a"}
     assert math.isnan(ev._div(1, 0))
+
+
+# ------------------------------------------------------------------ review regressions
+
+
+def test_pipeline_fps_at_k_comes_from_the_k1_row():
+    bench = [  # what the benchmark writes: k = 1 rows only
+        {"config": "S", "backend": "onnx", "k": 1, "detector_fps": 5.0, "t_track_count": 0.05},
+        {"config": "S", "backend": "torch", "k": 1, "detector_fps": 1.0, "t_track_count": 0.05},
+    ]
+    assert ev.pipeline_fps(bench, "S", 1) == pytest.approx(1 / (0.2 + 0.05))
+    assert ev.pipeline_fps(bench, "S", 3) == pytest.approx(3 / (0.2 + 0.05))
+    assert ev.pipeline_fps(bench, "S", 5) == pytest.approx(5 / (0.2 + 0.05))
+    assert ev.pipeline_fps(bench, "N", 3) is None
+    assert ev.pipeline_fps([{"config": "S", "k": 1, "detector_fps": 5.0}], "S", 2) is None
+
+
+def test_frontier_has_fps_for_every_k_from_a_k1_only_bench(tmp_path):
+    cells = [cell("S", 1, "hysteresis", 100, 0, 0), cell("S", 3, "hysteresis", 100, 0, 0)]
+    ev.write_csv(tmp_path / ev.TEST_CELLS, cells, ev.CELL_FIELDS)
+    ev.write_csv(
+        tmp_path / ev.BENCH,
+        [{"config": "S", "backend": "onnx", "k": 1, "detector_fps": 5.0, "t_track_count": 0.05}],
+    )
+    by = {r["k"]: r for r in ev.frontier(tmp_path, log=lambda s: None)}
+    assert by[3]["pipeline_fps"] == pytest.approx(3 / 0.25)
+    assert by[3]["cheapest_within"] and not by[1]["cheapest_within"]
+
+
+def clipped_world() -> ev.Sources:
+    """A person walks right to left across x = 50 with the box bottom below the 100 px frame."""
+    rows = [(f, 1, 50 + (6 - f) * 4 - 5, 60, 10, 50) for f in range(1, 12)]  # bottom at y = 110
+    gt = tracks_from_rows(rows)
+    src = fake_sources()
+    src.gt = lambda seq: gt
+    src.track = lambda per_frame, fps, k, tau: gt.clip(100, 100)  # predictions are clipped
+    return src
+
+
+def test_gt_is_clipped_so_truth_counts_what_the_clipped_prediction_counts():
+    from vidan.counting import count_line
+
+    src = clipped_world()
+    v_mid = LINES["v_mid"]
+    raw = src.gt("A")
+    assert count_line(raw, v_mid).events == ()  # the foot anchor at y = 110 is off the segment
+    assert len(count_line(raw.clip(100, 100), v_mid).events) == 1
+    rows = ev.Scorer(src).score_cell("S", "A", 1, 0.4, 0).rows
+    v = [r for r in rows if r["line"] == "v_mid"]
+    assert sum(r["n_true"] for r in v) == 1 and sum(r["n_pred"] for r in v) == 1
+    assert sum(r["tp"] for r in v) == 1 and sum(r["fn"] + r["fp"] for r in v) == 0
+
+
+def test_check_frames_requires_exactly_1_to_seq_length():
+    full = dict.fromkeys(range(1, 6))
+    ev.check_frames(full, 5, "S/A")
+    with pytest.raises(ValueError, match="1 missing"):
+        ev.check_frames({f: None for f in (1, 2, 3, 5)}, 5, "S/A")
+    with pytest.raises(ValueError, match="extra"):
+        ev.check_frames({**full, 9: None}, 5, "S/A")
+
+
+def test_n_bad_frames_reaches_the_cells_and_the_grid(tmp_path):
+    grid, _ = ev.tune(
+        fake_sources(), tmp_path, configs=("S",), ks=(1,), taus=(0.4,), bands=(0,),
+        seqs=("A", "B"), log=lambda s: None,
+    )  # fmt: skip
+    assert grid[0]["n_bad_frames"] == 2  # per sequence once, not once per line and direction
+    assert "n_bad_frames" in ev.CELL_FIELDS
+    cells = ev.Scorer(fake_sources()).score_cell("S", "A", 1, 0.4, 0).rows
+    assert {r["n_bad_frames"] for r in cells} == {2}
+
+
+def cli_args(stage, results_dir, **kw):
+    ns = dict(stage=stage, results_dir=results_dir, configs=None, seqs=None, ks=None, taus=None)
+    ns.update(kw)
+    return type("Args", (), ns)()
+
+
+def test_cli_forbids_subset_flags_on_test_and_on_tune_into_results(tmp_path, capsys):
+    for flag in ("configs", "seqs", "ks", "taus"):
+        assert ev.run_cli(cli_args("test", tmp_path, **{flag: ["x"]})) == 2
+    assert "once" in capsys.readouterr().err
+    assert ev.run_cli(cli_args("tune", ev.RESULTS, configs=["S"])) == 2
+    assert "elsewhere" in capsys.readouterr().err
+
+
+def test_test_refuses_a_second_run_while_test_files_exist(tmp_path):
+    make_selection(tmp_path)
+    kw = dict(seqs=("A",), check_committed=lambda p: (True, ""), log=lambda s: None)
+    ev.test(fake_sources(), tmp_path, **kw)
+    with pytest.raises(ev.RepeatTestRun, match="delete them by hand"):
+        ev.test(fake_sources(), tmp_path, **kw)
+    for p in tmp_path.glob("test_*.csv"):
+        p.unlink()
+    ev.test(fake_sources(), tmp_path, **kw)  # allowed again once the files are gone

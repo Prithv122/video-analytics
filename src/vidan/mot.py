@@ -54,6 +54,20 @@ class Tracks:
             return np.column_stack([x + w / 2.0, y + h / 2.0])
         raise ValueError(f"unknown anchor {kind!r}; expected one of {_ANCHORS}")
 
+    def clip(self, width: float, height: float) -> "Tracks":
+        """Boxes clipped to the frame `[0, width] x [0, height]`; zero-area boxes are dropped.
+
+        Idempotent. Detections are clipped when they are decoded, so ground truth gets the same
+        treatment before counting: a foot anchor below the frame would otherwise project off a
+        vertical line's segment.
+        """
+        x, y, w, h = self.xywh.T
+        x1, y1 = np.clip(x, 0.0, width), np.clip(y, 0.0, height)
+        x2, y2 = np.clip(x + w, 0.0, width), np.clip(y + h, 0.0, height)
+        keep = (x2 > x1) & (y2 > y1)
+        boxes = np.column_stack([x1, y1, x2 - x1, y2 - y1])
+        return Tracks(self.frame[keep], self.track_id[keep], boxes[keep], self.score[keep])
+
     def by_id(self) -> dict[int, np.ndarray]:
         """Map track id -> row indices of that id, in frame order."""
         if len(self) == 0:

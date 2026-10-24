@@ -92,7 +92,7 @@ CLAIMS = "claims.json"
 FRONTIER = "frontier.csv"
 
 CELL_FIELDS = (
-    "config seq line direction k tau band arm n_true n_pred tp fp fn tp_time "
+    "config seq line direction k tau band arm n_bad_frames n_true n_pred tp fp fn tp_time "
     + " ".join(f"fp_{c}" for c in FP_CATEGORIES)
     + " "
     + " ".join(f"fn_{c}" for c in FN_CATEGORIES)
@@ -113,6 +113,7 @@ EVENT_FIELDS = [
     "category",
 ]
 _INT_COLS = {
+    "n_bad_frames",
     "direction", "k", "band", "n_true", "n_pred", "tp", "fp", "fn", "tp_time", "frame", "block",
     *(f"fp_{c}" for c in FP_CATEGORIES),
     *(f"fn_{c}" for c in FN_CATEGORIES),
@@ -143,8 +144,21 @@ class Sources:
     gt: Callable[[str], Tracks]  # seq -> ground-truth tracks (consider == 1, pedestrian)
     fps: Callable[[str], float]
     n_frames: Callable[[str], int]
+    size: Callable[[str], tuple[float, float]]  # seq -> (width, height); boxes are clipped to it
     lines: Callable[[str], dict[str, Line]]
     track: Callable[[dict, float, int, float], Tracks]  # (per_frame, fps, k, tau) -> Tracks
+    n_bad_frames: Callable[[str, str], int | None] | None = None  # (config, seq) -> from cache meta
+
+
+def check_frames(per_frame: dict, seq_length: int, label: str) -> None:
+    """Raise unless the cache holds exactly the frames 1..seq_length."""
+    have, want = set(per_frame), set(range(1, seq_length + 1))
+    if have != want:
+        missing, extra = sorted(want - have), sorted(have - want)
+        raise ValueError(
+            f"{label}: cache frames differ from 1..{seq_length} "
+            f"({len(missing)} missing, first {missing[:3]}; {len(extra)} extra, first {extra[:3]})"
+        )
 
 
 def default_sources(
@@ -160,6 +174,7 @@ def default_sources(
 
     layout: dict = {}
     infos: dict[str, Any] = {}
+    bad: dict[tuple[str, str], int | None] = {}
 
     def info(seq: str):
         if seq not in infos:
@@ -167,7 +182,9 @@ def default_sources(
         return infos[seq]
 
     def detections(config: str, seq: str) -> dict:
-        per_frame, _ = load_cache(Path(cache_root) / config / f"{seq}.npz")
+        per_frame, meta = load_cache(Path(cache_root) / config / f"{seq}.npz")
+        check_frames(per_frame, info(seq).seq_length, f"{config}/{seq}")
+        bad[(config, seq)] = meta.get("n_bad_frames")
         return {
             f: (d if bool((d.class_id == PERSON).all()) else d.keep(d.class_id == PERSON))
             for f, d in per_frame.items()
@@ -193,8 +210,10 @@ def default_sources(
         gt=gt,
         fps=lambda s: float(info(s).frame_rate),
         n_frames=lambda s: int(info(s).seq_length),
+        size=lambda s: (float(info(s).width), float(info(s).height)),
         lines=lines,
         track=track,
+        n_bad_frames=lambda c, s: bad.get((c, s)),
     )
 
 
@@ -224,12 +243,13 @@ class Scorer:
         self._det: dict = {}
         self._trk_key: tuple[str, str, int, float] | None = None
         self._trk: tuple[Tracks, dict] | None = None
+        self._bad: dict[tuple[str, str], int | None] = {}
         self.track_seconds = 0.0
         self.n_tracked = 0
 
     def gt(self, seq: str) -> Tracks:
         if seq not in self._gt:
-            self._gt[seq] = self.src.gt(seq)
+            self._gt[seq] = self.src.gt(seq).clip(*self.src.size(seq))
         return self._gt[seq]
 
     def gt_count(self, seq: str, line_name: str) -> LineCount:
@@ -246,8 +266,10 @@ class Scorer:
             if self._det_key != (config, seq):
                 self._det = self.src.detections(config, seq)
                 self._det_key = (config, seq)
+                if self.src.n_bad_frames is not None:
+                    self._bad[(config, seq)] = self.src.n_bad_frames(config, seq)
             t0 = time.perf_counter()
-            tracks = self.src.track(self._det, self.src.fps(seq), k, tau)
+            tracks = self.src.track(self._det, self.src.fps(seq), k, tau).clip(*self.src.size(seq))
             self.track_seconds += time.perf_counter() - t0
             self.n_tracked += 1
             self._trk = (tracks, frame_assignment(tracks, self.gt(seq), self.iou_thr))
@@ -288,6 +310,7 @@ class Scorer:
                 row = {
                     "config": config, "seq": seq, "line": line_name, "direction": d, "k": k,
                     "tau": tau, "band": band, "arm": arm_of(band),
+                    "n_bad_frames": self._bad.get((config, seq)),
                     "n_true": len(trues), "n_pred": len(preds), "tp": tp,
                     "fp": len(preds) - tp, "fn": len(trues) - tp,
                     "tp_time": match_events(preds, trues, tol).tp,
@@ -401,7 +424,18 @@ def grid_rows(cells: Iterable[dict]) -> list[dict]:
         groups[(r["config"], r["k"], r["tau"], r["band"])].append(r)
     out = []
     for (config, k, tau, band), rs in sorted(groups.items()):
-        out.append({"config": config, "k": k, "tau": tau, "band": band, **pool(rs)})
+        bad = {r["seq"]: r.get("n_bad_frames") for r in rs}  # one value per sequence
+        known = all(v not in (None, "") for v in bad.values())
+        out.append(
+            {
+                "config": config,
+                "k": k,
+                "tau": tau,
+                "band": band,
+                "n_bad_frames": sum(bad.values()) if known else "",
+                **pool(rs),
+            }
+        )
     return out
 
 
@@ -453,6 +487,10 @@ def read_csv(path: Path) -> list[dict]:
             elif key in _FLOAT_COLS:
                 r[key] = float(val)
     return rows
+
+
+class RepeatTestRun(RuntimeError):
+    """Test result files exist already: a second look at the test set must be deliberate."""
 
 
 class SelectionNotCommitted(RuntimeError):
@@ -565,6 +603,13 @@ def test(
     if not ok:
         raise SelectionNotCommitted(
             f"refusing to run the test split: {why}. Commit {sel_path} first."
+        )
+    existing = sorted(Path(out_dir).glob("test_*.csv"))
+    if existing:
+        raise RepeatTestRun(
+            "refusing to run the test split again: "
+            + ", ".join(p.name for p in existing)
+            + " already exist. A second test-set exposure must be deliberate: delete them by hand."
         )
     selection = read_csv(sel_path)
     if configs is not None:
@@ -920,18 +965,27 @@ def format_claims(result: dict) -> list[str]:
 
 
 def pipeline_fps(bench: Sequence[dict], config: str, k: int) -> float | None:
-    """Pipeline FPS for (config, k): the `pipeline_fps` column, else k / (1/detector + track)."""
-    for r in bench:
-        if r.get("config") != config or (r.get("backend") or "onnx").lower() != "onnx":
-            continue
-        row_k = int(float(r["k"])) if r.get("k") not in (None, "") else 1
-        if row_k != k:
-            continue
+    """Pipeline FPS for (config, k) from the ONNX rows of `bench`.
+
+    A row for exactly this k with a `pipeline_fps` value wins. Otherwise the plan's formula
+    `k / (t_detect + t_track_count)` is applied to the k = 1 row (or a row without k), which is
+    where the benchmark measures both times.
+    """
+    rows = [
+        r for r in bench
+        if r.get("config") == config and (r.get("backend") or "onnx").lower() == "onnx"
+    ]  # fmt: skip
+
+    def row_k(r: dict) -> int:
+        return int(float(r["k"])) if r.get("k") not in (None, "") else 1
+
+    for r in rows:
         direct = _num(r.get("pipeline_fps"))
-        if direct is not None:
+        if row_k(r) == k and direct is not None:
             return direct
+    for r in rows:
         det, trk = _num(r.get("detector_fps")), _num(r.get("t_track_count"))
-        if det and trk is not None:
+        if row_k(r) == 1 and det and trk is not None:
             return k / (1.0 / det + trk)
     return None
 
@@ -980,6 +1034,21 @@ def frontier(out_dir: Path = RESULTS, log: Callable[[str], None] = print) -> lis
 def run_cli(args: Any) -> int:
     """Handler for `vidan eval <stage>` (arguments are defined in `cli._add_eval`)."""
     out_dir = Path(args.results_dir)
+    subset = any(getattr(args, f, None) for f in ("configs", "seqs", "ks", "taus"))
+    if args.stage == "test" and subset:
+        print(
+            "error: `eval test` takes no --configs/--seqs/--ks/--taus: the test split is scored "
+            "once, for every selected setting",
+            file=sys.stderr,
+        )
+        return 2
+    if args.stage == "tune" and subset and out_dir.resolve() == RESULTS.resolve():
+        print(
+            "error: a subset tune run must write elsewhere: pass --results-dir other than "
+            f"{RESULTS}",
+            file=sys.stderr,
+        )
+        return 2
     if args.stage == "claims":
         claims(out_dir)
         return 0
@@ -999,7 +1068,7 @@ def run_cli(args: Any) -> int:
         return 0
     try:
         test(src, out_dir, configs=args.configs, seqs=args.seqs)
-    except SelectionNotCommitted as exc:
+    except (SelectionNotCommitted, RepeatTestRun) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 0

@@ -37,6 +37,25 @@ def test_by_id_orders_unsorted_input_by_frame():
     assert t.by_id()[1].tolist() == [1, 2, 0]
 
 
+def test_clip_to_the_frame_drops_empty_boxes_and_is_idempotent():
+    t = tracks_from_rows(
+        [
+            (1, 1, -10, 20, 30, 40),  # sticks out on the left: x 0..20
+            (1, 2, 90, 90, 30, 30),  # sticks out bottom right: 90..100
+            (2, 3, 150, 10, 10, 10),  # fully outside
+            (2, 4, 5, 110, 10, 10),  # fully below
+            (2, 5, 10, 10, 20, 20),  # inside, untouched
+        ]
+    )
+    c = t.clip(100, 100)
+    assert c.track_id.tolist() == [1, 2, 5]
+    assert c.xywh.tolist() == [[0, 20, 20, 40], [90, 90, 10, 10], [10, 10, 20, 20]]
+    assert c.frame.tolist() == [1, 1, 2]
+    again = c.clip(100, 100)
+    assert np.array_equal(again.xywh, c.xywh)
+    assert len(Tracks.empty().clip(10, 10)) == 0
+
+
 def test_empty_cases(tmp_path):
     e = tracks_from_rows([])
     assert len(e) == 0 and e.by_id() == {} and e.anchor().shape == (0, 2)
