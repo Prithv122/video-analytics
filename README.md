@@ -94,7 +94,15 @@ uv run --extra vision vidan eval tune
 
 ## 7. What I'd change at 100× scale
 
-_Written once the results are in._
+100× here means a few hundred cameras instead of one sequence at a time.
+
+| Breaks first | Why | What I'd do |
+|---|---|---|
+| Detector cost | On this CPU detection takes on the order of a second per frame; tracking and counting take milliseconds (§5 has the measured split) | Batch frames across cameras on a GPU inference server (Triton or ONNX Runtime with the CUDA provider), keep the CPU path for edge boxes; frame skip only where the dev curve says it costs nothing |
+| The anchor | The bottom of a visible-part box is not a foot position: occlusion moves it by more than any band | Count on a keypoint model's ankle points, or on a ground-plane footprint from a calibrated homography, and track in world coordinates |
+| One line per camera, placed by rule | Midlines are fair for a benchmark, not for a shop door | A per-camera config with the line drawn on the floor plan, plus a short labelled clip per camera to check it before it goes live |
+| Truth | Annotated tracks exist for MOTChallenge only | A sampled audit: hand-count 5 minutes per camera per week and alert when event-level F1 drifts, since a net count can hide it |
+| Storage | Caches are one `.npz` per sequence | Detections and crossings as Parquet partitioned by camera and hour, so recounting with a new rule never touches video |
 
 ---
 
