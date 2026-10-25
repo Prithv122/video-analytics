@@ -732,4 +732,4 @@ def test_read_csv_keeps_a_non_numeric_precision_column(tmp_path) -> None:
     path.write_text("config,precision,detector_fps\nS8,int8,2.5\n", encoding="utf-8")
     (row,) = ev.read_csv(path)
     assert row["precision"] == "int8"
-    assert row["detector_fps"] == 2.5
+    assert row["f1"] == 0.25
