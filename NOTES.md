@@ -137,3 +137,33 @@ Two things the grid shows, reported and not acted on (the grid is frozen):
 - **Frame skip helps on dev.** f1 rises with k for most configs (S hysteresis 0.46 → 0.50 at
   k = 3). Fewer observations per second means fewer chances for an anchor to jitter across the
   line. Whether that holds on MOT20 is a test question.
+
+## 2026-10-25 — the test run (MOT20, once, dev-selected settings)
+
+Ran once at `69a21e6` after committing the sha256 of every cache (`results/cache_manifest.csv`);
+raw output committed unedited (`33e3985`), claims (`5c1f246`).
+
+**H1 not supported, H2 not supported (reversed).** Reference S, k = 1: hysteresis f1 0.057, naive
+0.089; paired difference −0.032 [−0.052, −0.015]. Net-count WAPE 0.94 and event error rate 1.02,
+so `eer − 1.5·wape` = −0.39 [−0.44, −0.33]: the count is not hiding error behind an exact total,
+it is simply far too low.
+
+**Why: the detector, not the tracker or the counter.** Almost every error is a missed crossing
+(`fn_missed`), not a switch or a duplicate. Checked before believing it:
+
+- **MOT20-05 has zero predicted crossings on both lines** (1,082 true). Small's highest person score
+  over all 3,315 frames is **0.59**; the dev-selected τ is 0.60, so ByteTrack never activates a
+  track. Not a bug: the cache has 112 detections per frame (score p50 0.18, p90 0.31) against 195
+  annotated people per frame. On MOT17-04 (dev) the same model's p90 is 0.75.
+- MOT20-03: 3.9 % track recall (MOTA 0.03). MOT20-02: 23 %. MOT20-01: 29 %.
+- MOT20 frames are 1,654–1,920 px wide with crowds of small, overlapping people; the detector sees
+  them at 512 × 512. Confidence falls with density, and a threshold chosen on sparser dev scenes
+  fails silently: no error, just no output.
+
+This is the brief's anticipated null result in its strongest form: on held-out crowded video the
+counting error is dominated by missed detections, and no tracker or line rule can recover a
+person who was never detected. Hysteresis makes it slightly worse because it also needs a track to
+stay on each side of the band, which short, fragmented tracks rarely do.
+
+Not run, and not claimed: a lower τ, tiled or higher-resolution inference, or a crowd-trained
+detector. Each is the obvious next experiment and each would need its own pre-registration.
