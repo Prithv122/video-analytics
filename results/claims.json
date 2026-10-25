@@ -1,0 +1,38 @@
+{
+  "H1": {
+    "claim": "a net count hides error: eer >= 1.5 x wape (S, k=1, hysteresis)",
+    "status": "not supported",
+    "estimate": -0.3943262411347519,
+    "ci95": [
+      -0.44203846047411854,
+      -0.3295301897303644
+    ],
+    "detail": {
+      "eer": 1.0156028368794325,
+      "wape": 0.939952718676123
+    }
+  },
+  "H2": {
+    "claim": "hysteresis beats naive: f1 difference > 0 (S, k=1, paired)",
+    "status": "not supported",
+    "estimate": -0.03153023967446372,
+    "ci95": [
+      -0.05174584953320135,
+      -0.015382008779866254
+    ],
+    "detail": {
+      "f1_hysteresis": 0.05706760316066725,
+      "f1_naive": 0.08859784283513097
+    }
+  },
+  "H3": {
+    "claim": "int8 is a free speed-up: S8/S detector FPS >= 1.3 and f1(S) - f1(S8) <= 0.03 (upper bound)",
+    "status": "not evaluable",
+    "detail": "bench.csv missing or has no S / S8 ONNX detector_fps"
+  },
+  "H4": {
+    "claim": "ONNX Runtime >= 1.5 x eager PyTorch FPS for Nano and Small, equivalence passing",
+    "status": "not evaluable",
+    "detail": "bench.csv missing or has no ONNX and PyTorch detector_fps for N"
+  }
+}
