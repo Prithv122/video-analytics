@@ -91,3 +91,28 @@ Nearly all the error is extra crossings, and nearly none of it is identity switc
 
 So the bottom-centre of a detection box is not a foot position. That is the main threat to any
 line counter built on box anchors, and it is not something a tracker setting fixes.
+
+## 2026-10-25 — scope vs the approved slot brief (awaiting owner sign-off)
+
+The slot brief approved on 2026-09-30 was read only after the build started. Where this repo
+differs from it:
+
+| Brief (approved) | Built here | Status |
+|---|---|---|
+| Vehicles (car, motorcycle, bus, truck), traffic-camera framing | Pedestrians (MOT person class) | divergence |
+| Held-out data: owner-filmed fixed-camera clips + hand counts (decision 2a) | MOT17 static sequences (dev) → MOT20 (test), annotated track ids as truth | divergence |
+| Pre-registered: abs count error ≤ 5 % per line on ≥ 2 of 3 clips (proposal) | H1–H4 in `EVAL_PLAN.md` (hidden error, hysteresis, int8, ONNX) | divergence |
+| Wilson intervals; ID switches on a hand-labelled 60 s sub-clip | Cluster bootstrap; ID switches and error causes on every frame from annotated ids | stronger, different |
+| Baselines: detection-only per-frame count; tracker defaults | Naive vs hysteresis rule; tracker defaults except the high-score threshold | baseline (1) missing |
+| COCO RF-DETR Nano/Small, no #26 weights | Same | as briefed |
+| `supervision` ByteTrack, else `trackers` (Apache-2.0) | `trackers` 2.6.1 (supervision 0.31 dropped it) | as briefed |
+| Detect stage writes a cache, CPU replay for track/count | Same (`.npz` cache instead of CSV) | as briefed |
+| T3: ONNX export + FPS harness | Built, with a quiet-machine gate | as briefed |
+| T4–T6 (speed, signal phase, SPaT) | Not started; T4 blocked on BrnoCompSpeed access | later |
+
+Why MOT was chosen, for the owner's decision: annotated identities make the question's second
+half ("what share of the error is identity switches vs missed detections") measurable on every
+crossing rather than on one hand-labelled minute; the test set is public, so anyone can rerun it;
+and it needs no filming. What it gives up: the traffic framing that P-17/P-18 build on, and a
+hand count on the owner's own camera. Until the owner decides, the MOT pipeline keeps running as
+built; nothing in it is tuned to the choice.

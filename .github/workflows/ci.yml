@@ -20,8 +20,12 @@ jobs:
       - name: Set up Python
         run: uv python install
 
+      # No `vision` extra: the counting core and its tests must not need torch or onnxruntime.
       - name: Install dependencies
         run: uv sync --all-groups
+
+      - name: Heavy packages absent from the fast job
+        run: uv run python -c "import importlib.util as u, sys; sys.exit(any(u.find_spec(m) for m in ('torch', 'onnxruntime', 'rfdetr')))"
 
       - name: Lint
         run: |
