@@ -34,9 +34,11 @@ needs both kinds of error, and on MOT20 almost all errors were misses.
 model. On MOT20-05, with 195 annotated people per frame, that model's highest person score in
 3,315 frames was 0.59, so the tracker never started a track and both lines counted zero, with no
 error raised. Across all 32 configurations recall never exceeded 0.19, and f1 tracked the selected
-threshold rather than model size, int8 or frame skip. Second weakness: the anchor. On dev, the
-bottom of a visible-part box isn't a foot. When legs are occluded the box shrinks, its bottom jumps
-across the line and back, and that produced most of the dev false crossings. At scale I'd count on
+threshold (an observation: the threshold was chosen per configuration, so it's confounded with
+the rest). Second weakness: the anchor. On dev, the
+bottom of a visible-part box isn't a foot. When legs are occluded the box shrinks and its bottom
+jumps across the line and back. With the band on, that pattern accounted for 34 of the 45 extra
+dev crossings that were left. At scale I'd count on
 keypoints or a ground-plane footprint, and I'd alarm on "zero tracks for N minutes".
 
 ### Q4. How do you know it works? What did you measure, against what?
@@ -44,9 +46,10 @@ keypoints or a ground-plane footprint, and I'd alarm on "zero tracks for N minut
 **A:** Against annotated MOT20 tracks the method never saw, with a frozen plan and four
 pre-registered claims, reported as they came out. H1 (net count hides error): not supported. H2
 (hysteresis beats naive): not supported, reversed, −0.032 [−0.052, −0.015]; the band also needs
-a track to stay on each side, which short fragmented tracks rarely do. H3 (int8 is a free
-speed-up): supported, 1.38× FPS, but the accuracy half passed because dev picked a lower threshold
-for int8, not because int8 detects better; their score distributions match to about 0.01. H4
+a track to stay on each side, which my guess is that short, fragmented tracks rarely do; I didn't
+test that mechanism. H3 (int8 is a free speed-up): supported, 1.38× FPS for Small, but the
+accuracy half most likely passed because dev picked a lower threshold for int8, not because int8
+detects better; their score percentiles differ by only 0.009–0.016. H4
 (ONNX Runtime ≥ 1.5× PyTorch): not supported; on this CPU ONNX was 0.84× (Nano) and 0.70× (Small)
 as fast. Timings ran behind a gate that waited for system CPU under 15 % before every repeat.
 Before the test run an independent review found three bugs that would have changed numbers
@@ -55,11 +58,12 @@ dated amendment before any tuning.
 
 ### Q5. Your best configuration scores 0.27 F1. Isn't that just a bad model?
 
-**A:** It's an off-the-shelf COCO detector on a crowd benchmark it was never trained for, at
-512 px input on 1,920 px frames, and the point was to measure that honestly rather than tune until
-it looked good. The result is useful: it says where the error lives. Identity switches are under
-5 % of errors everywhere, so a better tracker would not help. A lower threshold, tiled or
-higher-resolution inference, or a crowd-trained detector would. Each of those is a separate
+**A:** It's an off-the-shelf COCO detector on a crowd benchmark it was never trained for: the
+best cell is Nano at 384 px input on 1,173–1,920 px frames. The point was to measure that honestly
+rather than tune until it looked good. The result is useful because it says where the error lives.
+Identity switches are under 5 % of errors everywhere, so a better tracker is unlikely to help much.
+The candidates are a lower threshold, tiled or higher-resolution inference, or a crowd-trained
+detector, none of which I've tested. Each of those is a separate
 pre-registered experiment. I didn't run any of them on this test set, because then the 0.27 would
 be a tuned number.
 
@@ -72,5 +76,5 @@ detect-track-count pipeline on CPU and scored every predicted crossing against a
 on held-out crowded video, giving each error a cause. Tuned on MOT17 and scored once on MOT20, the
 answer was clear: the detector misses people (recall ≤ 0.19 in every configuration), the tracker
 almost never swaps them (≤ 5 % of errors), and a threshold tuned on sparser scenes silently
-produced zero tracks on the densest one. On the speed side, int8 gave 1.38×, and ONNX Runtime was
-slower than PyTorch on this CPU.
+produced zero tracks on the densest one. On the speed side, int8 gave 1.38× on Small (1.27× on
+Nano), and ONNX Runtime was slower than PyTorch on this CPU.

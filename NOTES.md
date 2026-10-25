@@ -135,7 +135,7 @@ Two things the grid shows, reported and not acted on (the grid is frozen):
   best setting may lie outside the grid; the
   test run uses what the rule picked.
 - **Frame skip helps on dev.** f1 rises with k for most configs (S hysteresis 0.46 → 0.50 at
-  k = 3). Fewer observations per second means fewer chances for an anchor to jitter across the
+  k = 3). A likely reason (untested): fewer observations per second give fewer chances for an anchor to jitter across the
   line. Whether that holds on MOT20 is a test question.
 
 ## 2026-10-25 — the test run (MOT20, once, dev-selected settings)
@@ -156,14 +156,24 @@ it is simply far too low.
   track. Not a bug: the cache has 112 detections per frame (score p50 0.18, p90 0.31) against 195
   annotated people per frame. On MOT17-04 (dev) the same model's p90 is 0.75.
 - MOT20-03: 3.9 % track recall (MOTA 0.03). MOT20-02: 23 %. MOT20-01: 29 %.
-- MOT20 frames are 1,654–1,920 px wide with crowds of small, overlapping people; the detector sees
+- MOT20 frames are 1,173–1,920 px wide with crowds of small, overlapping people; the detector sees
   them at 512 × 512. Confidence falls with density, and a threshold chosen on sparser dev scenes
   fails silently: no error, just no output.
 
 This is the brief's anticipated null result in its strongest form: on held-out crowded video the
 counting error is dominated by missed detections, and no tracker or line rule can recover a
-person who was never detected. Hysteresis makes it slightly worse because it also needs a track to
+person who was never detected. Hysteresis makes it slightly worse, probably because it also needs a track to
 stay on each side of the band, which short, fragmented tracks rarely do.
 
 Not run, and not claimed: a lower τ, tiled or higher-resolution inference, or a crowd-trained
 detector. Each is the obvious next experiment and each would need its own pre-registration.
+
+## 2026-10-25 — fact-check of the write-up
+
+An independent pass checked about 130 statements in README, INTERVIEW, RESUME_BULLET and NOTES
+against `results/`. All tables, intervals and speeds were right. Fixed: the claim count (three of
+four not supported, not two), MOT20 frame widths (1,173–1,920 px), the best cell's input size
+(Nano, 384 px), the int8 speed-up stated for Small only (Nano 1.27×), the equivalence threshold
+caveat, Small's mean IoU (0.9998), and "the threshold decides everything", now stated as a
+confounded observation. Mechanisms not tested on the test set are now marked as likely or
+untested.

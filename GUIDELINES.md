@@ -119,11 +119,11 @@ side) or `-1`, and `frame` is the frame of the observation that completed it.
 
 ## Acceptance criteria
 
-- [ ] Hand-computed fixture tests for both counting rules (clean crossing, wobble on the line,
+- [x] Hand-computed fixture tests for both counting rules (clean crossing, wobble on the line,
       crossing outside the segment, gap in a track, `band_px = 0` equals naive)
-- [ ] Event matching tested on fixtures where net count is exact but F1 < 1
-- [ ] `EVAL_PLAN.md` frozen before any test-sequence run; claims evaluated mechanically
-- [ ] CPU benchmark: PyTorch vs ONNX fp32 vs ONNX int8 at each resolution, same machine, same threads
+- [x] Event matching tested on fixtures where net count is exact but F1 < 1
+- [x] `EVAL_PLAN.md` frozen before any test-sequence run; claims evaluated mechanically
+- [x] CPU benchmark: PyTorch vs ONNX fp32 vs ONNX int8 at each model's input size, same machine, same threads
 - [ ] Runs from a clean clone using only the documented steps; tests, lint and CI green
 
 ## Conventions

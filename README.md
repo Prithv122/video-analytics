@@ -13,8 +13,8 @@ numpy/scipy counting core · motmetrics · pytest. No Ultralytics (AGPL-3.0).
 **Result in one line:** on held-out crowded video the count is wrong because the detector misses
 people, not because the tracker swaps them: recall ≤ 0.19 in every configuration, identity switches
 ≤ 5 % of errors, and a confidence threshold chosen on sparser scenes produced zero tracks on the
-densest one. Two of four pre-registered claims failed and one passed for a different reason than
-predicted (§5).
+densest one. Three of four pre-registered claims were not supported; the fourth (int8 speed-up)
+held, but its accuracy half passed for a different reason than predicted (§5).
 
 ---
 
@@ -82,8 +82,8 @@ Intervals are 95 % cluster-bootstrap over (sequence, 10 s block). Tables: `resul
 |---|---|---|
 | **H1** a net count hides error (`eer ≥ 1.5 × wape`) | **not supported** | `eer` 1.02 vs `wape` 0.94; `eer − 1.5·wape` −0.39 [−0.44, −0.33]. The count is not exact-but-wrong, it is far too low |
 | **H2** hysteresis beats naive | **not supported** (reversed) | f1 0.057 vs 0.089, difference −0.032 [−0.052, −0.015] |
-| **H3** int8 is a free speed-up | **supported**, with a caveat | Small int8 1.38× fp32 FPS; f1(S) − f1(S8) −0.074 [−0.100, −0.049]. The accuracy gain is not int8: dev picked τ 0.5 for S8 and 0.6 for S, and their test score distributions match to about 0.01 |
-| **H4** ONNX Runtime ≥ 1.5× eager PyTorch | **not supported** | ONNX/PyTorch FPS 0.84 (Nano) and 0.70 (Small), and the box-equivalence check failed for both |
+| **H3** int8 is a free speed-up | **supported**, with a caveat | Small int8 1.38× fp32 FPS (Nano 1.27×, not claimed); f1(S) − f1(S8) −0.074 [−0.100, −0.049]. The accuracy gain is most likely not int8 itself: dev picked τ 0.5 for S8 and 0.6 for S, and their test score percentiles differ by only 0.009–0.016 |
+| **H4** ONNX Runtime ≥ 1.5× eager PyTorch | **not supported** | ONNX/PyTorch FPS 0.84 (Nano) and 0.70 (Small), and the box-equivalence check failed for both at score ≥ 0.10 (at 0.30 Nano passes; Small's minimum IoU is still 0.980) |
 
 ### What limits the count: the detector's confidence in a crowd
 
@@ -98,16 +98,18 @@ Intervals are 95 % cluster-bootstrap over (sequence, 10 s block). Tables: `resul
 - **Misses dominate.** In the reference cell 1,986 of 2,115 true crossings are `missed` (no track
   on one side of the line); identity switches account for 0.2 % of errors. Across all 32 cells the
   switch share never exceeds 5 % and recall never exceeds 0.19.
-- **The threshold decides everything.** Every cell's f1 follows the dev-selected τ, not the model,
-  precision or frame skip: the 20 cells at τ 0.6 score 0.04–0.10, the 10 at τ 0.5 score 0.12–0.21,
-  the 2 at τ 0.4 score 0.22–0.27.
+- **f1 tracks the selected threshold.** Across the 32 cells, the 20 at τ 0.6 score 0.04–0.10, the
+  10 at τ 0.5 score 0.12–0.21 and the 2 at τ 0.4 score 0.22–0.27. This is an observation: τ was
+  chosen per config, k and arm on dev, so it is confounded with all three, and τ was never varied
+  on its own on the test set.
 - **Why.** On MOT20-05 (195 annotated people per frame) Small's highest person score in 3,315 frames
   is 0.59, below the τ = 0.6 that dev chose, so ByteTrack never starts a track and both lines count
   zero. On MOT17-04 (dev) the same model's 90th-percentile score is 0.75; on MOT20-05 it is 0.31.
   The threshold failed silently: no error, just no output.
-- **Dev looked different.** On MOT17 the main error was extra crossings from a person standing on
-  the line and from box bottoms jumping when legs are occluded; hysteresis fixed the first (dev
-  f1 0.31 → 0.46). On MOT20 there are too few tracks for that to matter.
+- **Dev looked different.** On MOT17 the main error was extra crossings: a person standing on the
+  line (one track crossed 57 times) and box bottoms jumping when legs are occluded. The band removed
+  most of the first kind, and dev f1 rose 0.31 → 0.46. On MOT20 there are too few tracks for that
+  to matter.
 
 ### Speed (one CPU, gated)
 
@@ -128,8 +130,8 @@ pipeline. Frame skip k multiplies throughput by k; on this test set it did not c
 consistently because accuracy moved with τ instead. The frontier's "cheapest point within 0.02 f1
 of the reference" (Nano, k = 5) is uninformative when the reference itself scores 0.057.
 
-ONNX fp32 vs PyTorch boxes on 50 dev frames: mean matched IoU 0.9999, but the minimum is 0.983
-(Nano) and 0.897 (Small), so the pre-registered all-boxes ≥ 0.99 rule fails (`equivalence.csv`).
+ONNX fp32 vs PyTorch boxes on 50 dev frames: mean matched IoU 0.9999 (Nano) and 0.9998 (Small),
+but the minimum is 0.983 and 0.897, so the pre-registered all-boxes ≥ 0.99 rule fails (`equivalence.csv`).
 
 ### Limits
 
@@ -165,7 +167,7 @@ uv run --extra vision vidan eval tune
 
 | Breaks first | Why | What I'd do |
 |---|---|---|
-| Detector cost | On this CPU detection takes on the order of a second per frame; tracking and counting take milliseconds (§5 has the measured split) | Batch frames across cameras on a GPU inference server (Triton or ONNX Runtime with the CUDA provider), keep the CPU path for edge boxes; frame skip only where the dev curve says it costs nothing |
+| Detector cost | On this CPU detection takes 0.25–0.62 s per 1080p frame; tracking and counting take about 1 ms (§5) | Batch frames across cameras on a GPU inference server (Triton or ONNX Runtime with the CUDA provider), keep the CPU path for edge boxes; frame skip only where the dev curve says it costs nothing |
 | The anchor | The bottom of a visible-part box is not a foot position: occlusion moves it by more than any band | Count on a keypoint model's ankle points, or on a ground-plane footprint from a calibrated homography, and track in world coordinates |
 | One line per camera, placed by rule | Midlines are fair for a benchmark, not for a shop door | A per-camera config with the line drawn on the floor plan, plus a short labelled clip per camera to check it before it goes live |
 | Truth | Annotated tracks exist for MOTChallenge only | A sampled audit: hand-count 5 minutes per camera per week and alert when event-level F1 drifts, since a net count can hide it |
