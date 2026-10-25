@@ -131,7 +131,8 @@ S8 0.26 / 0.39, N 0.21 / 0.34, N8 0.24 / 0.36.
 Two things the grid shows, reported and not acted on (the grid is frozen):
 
 - **Selections sit on the grid's edge.** The hysteresis arm picked band 32, the largest offered, in
-  15 of 16 cells, and τ = 0.6, the highest, in most. The best setting may lie outside the grid; the
+  15 of 16 cells; τ = 0.6, the highest, won 13 of 16 naive cells and 7 of 16 hysteresis cells. The
+  best setting may lie outside the grid; the
   test run uses what the rule picked.
 - **Frame skip helps on dev.** f1 rises with k for most configs (S hysteresis 0.46 → 0.50 at
   k = 3). Fewer observations per second means fewer chances for an anchor to jitter across the
