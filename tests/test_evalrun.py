@@ -729,7 +729,7 @@ def test_cli_summary_stage_is_registered():
 
 def test_read_csv_keeps_a_non_numeric_precision_column(tmp_path) -> None:
     path = tmp_path / "bench.csv"
-    path.write_text("config,precision,detector_fps\nS8,int8,2.5\n", encoding="utf-8")
+    path.write_text("config,precision,f1\nS8,int8,0.25\n", encoding="utf-8")
     (row,) = ev.read_csv(path)
     assert row["precision"] == "int8"
     assert row["f1"] == 0.25
