@@ -725,3 +725,11 @@ def test_cli_summary_stage_is_registered():
 
     ns = cli.build_parser().parse_args(["eval", "summary"])
     assert ns.stage == "summary" and ns.func is cli._run_eval
+
+
+def test_read_csv_keeps_a_non_numeric_precision_column(tmp_path) -> None:
+    path = tmp_path / "bench.csv"
+    path.write_text("config,precision,detector_fps\nS8,int8,2.5\n", encoding="utf-8")
+    (row,) = ev.read_csv(path)
+    assert row["precision"] == "int8"
+    assert row["detector_fps"] == 2.5

@@ -40,6 +40,7 @@ Result-file schemas read here (written by the benchmark code)
 `frac_frames_equal_count`, or a boolean `passed`.
 """
 
+import contextlib
 import csv
 import json
 import math
@@ -489,7 +490,9 @@ def read_csv(path: Path) -> list[dict]:
             if key in _INT_COLS:
                 r[key] = int(float(val))
             elif key in _FLOAT_COLS or key.endswith(("_lo", "_hi")):
-                r[key] = float(val)
+                # bench.csv's `precision` is fp32/int8, not the metric of the same name
+                with contextlib.suppress(ValueError):
+                    r[key] = float(val)
     return rows
 
 
