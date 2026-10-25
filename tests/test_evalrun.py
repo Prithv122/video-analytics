@@ -587,3 +587,141 @@ def test_test_refuses_a_second_run_while_test_files_exist(tmp_path):
     for p in tmp_path.glob("test_*.csv"):
         p.unlink()
     ev.test(fake_sources(), tmp_path, **kw)  # allowed again once the files are gone
+
+
+# ------------------------------------------------------------------------------------ summary
+
+
+def synth_results(tmp_path):
+    """Two sequences of 12 blocks. S hysteresis and S8 hysteresis perfect, S naive all wrong."""
+    plan = [  # (config, arm, tau, band, perfect)
+        ("S", "hysteresis", 0.5, 16, True),
+        ("S", "naive", 0.6, 0, False),
+        ("S8", "hysteresis", 0.4, 8, True),
+    ]
+    cells, events, mot = [], [], []
+    for config, arm, tau, band, perfect in plan:
+        for seq in ("A", "B"):
+            row = cell(
+                config, 1, arm, 12 if perfect else 0, 0 if perfect else 12, 0 if perfect else 12
+            )
+            row.update(seq=seq, tau=tau, band=band, n_bad_frames=0)
+            cells.append(row)
+            for b in range(12):
+                spec = (
+                    [(b, "pred", "tp"), (b, "true", "tp")]
+                    if perfect
+                    else [(b, "pred", "fp"), (b, "true", "fn")]
+                )
+                events += event_rows(spec, config=config, arm=arm, seq=seq)
+            mot.append(
+                {"config": config, "seq": seq, "k": 1, "tau": tau, "mota": 0.5,
+                 "idf1": 0.25 + tau, "num_switches": 7}
+            )  # fmt: skip
+    ev.write_csv(tmp_path / ev.TEST_CELLS, cells, ev.CELL_FIELDS)
+    ev.write_csv(tmp_path / ev.TEST_EVENTS, events, ev.EVENT_FIELDS)
+    ev.write_csv(tmp_path / ev.TEST_MOT, mot)
+    ev.write_csv(
+        tmp_path / ev.TEST_SEQUENCES,
+        [{"seq": s, "fps": 10.0, "n_frames": 1200, "block_frames": 100} for s in ("A", "B")],
+    )
+
+
+def scoring_sources() -> ev.Sources:
+    from vidan.detect import Detections
+
+    def detections(config, seq):
+        if (config, seq) == ("S8", "MOT20-05"):
+            raise FileNotFoundError("no cache")
+        box = np.array([[0, 0, 10, 10]], float)
+        return {
+            1: Detections(np.repeat(box, 3, 0), [0.2, 0.55, 0.9], [1, 1, 1]),
+            2: Detections(box, [0.35], [1]),
+        }
+
+    src = fake_sources()
+    src.detections = detections
+    return src
+
+
+def read_all(tmp_path, names):
+    return {n: (tmp_path / n).read_bytes() for n in names}
+
+
+def test_summary_pools_with_intervals_and_leaves_the_test_files_alone(tmp_path):
+    synth_results(tmp_path)
+    frozen = (ev.TEST_CELLS, ev.TEST_EVENTS, ev.TEST_SEQUENCES, ev.TEST_MOT)
+    before = read_all(tmp_path, frozen)
+    logs: list[str] = []
+    out = ev.summary(tmp_path, scoring_sources(), n_resamples=30, log=logs.append)
+    assert read_all(tmp_path, frozen) == before
+    rows = {(r["config"], r["arm"]): r for r in ev.read_csv(tmp_path / ev.SUMMARY)}
+    assert list(rows) == [("S", "hysteresis"), ("S", "naive"), ("S8", "hysteresis")]
+    hyst, naive = rows[("S", "hysteresis")], rows[("S", "naive")]
+    assert hyst["f1"] == 1.0 and hyst["tau"] == 0.5 and hyst["band"] == 16
+    assert (hyst["f1_lo"], hyst["f1_hi"]) == (1.0, 1.0) and hyst["eer_hi"] == 0.0
+    assert naive["f1"] == 0.0 and naive["wape"] == 0.0  # 12 predicted for 12 true in each cell
+    assert naive["eer"] == 2.0 and naive["hidden"] == 2.0
+    assert naive["eer_lo"] == naive["eer_hi"] == 2.0
+    for m in ev.SUMMARY_CI_METRICS:
+        assert f"{m}_lo" in hyst and f"{m}_hi" in hyst
+    assert any("f1(S) - f1(S8) = 0.0000" in line and "yes" in line for line in logs)
+    assert out["h3_accuracy"]["difference"] == 0.0
+
+
+def test_summary_by_sequence_joins_mot_at_the_selected_tau(tmp_path):
+    synth_results(tmp_path)
+    ev.summary(tmp_path, scoring_sources(), n_resamples=30, log=lambda s: None)
+    rows = ev.read_csv(tmp_path / ev.BY_SEQUENCE)
+    assert len(rows) == 6  # 3 settings x 2 sequences
+    by = {(r["config"], r["arm"], r["seq"]): r for r in rows}
+    assert by[("S", "naive", "A")]["f1"] == 0.0 and by[("S", "hysteresis", "B")]["f1"] == 1.0
+    assert float(by[("S", "naive", "A")]["mot_idf1"]) == pytest.approx(0.25 + 0.6)
+    assert float(by[("S", "hysteresis", "A")]["mot_idf1"]) == pytest.approx(0.25 + 0.5)
+    assert by[("S8", "hysteresis", "B")]["mot_num_switches"] == "7"
+    assert by[("S", "naive", "A")]["mot_motp"] == ""  # not provided: left blank
+
+
+def test_summary_detector_scores_cover_dev_and_test_and_skip_missing_caches(tmp_path):
+    synth_results(tmp_path)
+    logs: list[str] = []
+    ev.summary(tmp_path, scoring_sources(), n_resamples=30, log=logs.append)
+    rows = ev.read_csv(tmp_path / ev.DETECTOR_SCORES)
+    by = {(r["config"], r["seq"]): r for r in rows}
+    assert ("S8", "MOT20-05") not in by and any("no cache for S8/MOT20-05" in s for s in logs)
+    assert len(rows) == 2 * 7 - 1  # configs S and S8 x seven real sequences, minus the missing one
+    r = by[("S", "MOT17-02")]
+    assert r["split"] == "dev" and by[("S", "MOT20-01")]["split"] == "test"
+    scores = np.array([0.2, 0.55, 0.9, 0.35])
+    assert float(r["mean_det_per_frame"]) == pytest.approx(4 / 12)
+    assert float(r["mean_gt_per_frame"]) == pytest.approx(len(GT) / 12)
+    assert float(r["score_p50"]) == pytest.approx(np.percentile(scores, 50))
+    assert float(r["score_p99"]) == pytest.approx(np.percentile(scores, 99))
+    assert float(r["score_max"]) == pytest.approx(0.9)
+    assert float(r["det_per_frame_ge_0.3"]) == pytest.approx(3 / 12)
+    assert float(r["det_per_frame_ge_0.6"]) == pytest.approx(1 / 12)
+    assert float(r["selected_tau_k1_hysteresis"]) == 0.5
+    assert float(by[("S8", "MOT17-02")]["selected_tau_k1_hysteresis"]) == 0.4
+
+
+def test_h3_accuracy_half_needs_both_configs_and_reports_the_upper_bound():
+    logs: list[str] = []
+    assert (
+        ev.h3_accuracy_half({("S", 1, "hysteresis"): {"f1": np.ones(5)}}, {}, logs.append) is None
+    )
+    assert "not both" in logs[0]
+    boot = {
+        ("S", 1, "hysteresis"): {"f1": np.array([0.9, 0.9, 0.9])},
+        ("S8", 1, "hysteresis"): {"f1": np.array([0.8, 0.8, 0.8])},
+    }
+    point = {("S", 1, "hysteresis"): 0.9, ("S8", 1, "hysteresis"): 0.8}
+    out = ev.h3_accuracy_half(boot, point, logs.append)
+    assert out["difference"] == pytest.approx(0.1) and not out["upper_bound_within_0.03"]
+    assert "no" in logs[-1]
+
+
+def test_cli_summary_stage_is_registered():
+    from vidan import cli
+
+    ns = cli.build_parser().parse_args(["eval", "summary"])
+    assert ns.stage == "summary" and ns.func is cli._run_eval

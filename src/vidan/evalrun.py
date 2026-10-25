@@ -90,6 +90,10 @@ BENCH = "bench.csv"
 EQUIVALENCE = "equivalence.csv"
 CLAIMS = "claims.json"
 FRONTIER = "frontier.csv"
+SUMMARY = "test_summary.csv"
+BY_SEQUENCE = "test_by_sequence.csv"
+DETECTOR_SCORES = "test_detector_scores.csv"
+SUMMARY_CI_METRICS = ("f1", "recall", "precision", "wape", "eer")
 
 CELL_FIELDS = (
     "config seq line direction k tau band arm n_bad_frames n_true n_pred tp fp fn tp_time "
@@ -484,7 +488,7 @@ def read_csv(path: Path) -> list[dict]:
                 continue
             if key in _INT_COLS:
                 r[key] = int(float(val))
-            elif key in _FLOAT_COLS:
+            elif key in _FLOAT_COLS or key.endswith(("_lo", "_hi")):
                 r[key] = float(val)
     return rows
 
@@ -1028,6 +1032,184 @@ def frontier(out_dir: Path = RESULTS, log: Callable[[str], None] = print) -> lis
     return rows
 
 
+# ---------------------------------------------------------------------------------------- summary
+
+_POOLED = (
+    "f1", "precision", "recall", "f1_time", "wape", "eer", "hidden", "switch_share",
+    "n_true", "n_pred", "tp", "fp", "fn",
+    *(f"fp_{c}" for c in FP_CATEGORIES),
+    *(f"fn_{c}" for c in FN_CATEGORIES),
+)  # fmt: skip
+_MOT_COLS = (
+    "mota", "motp", "idf1", "idp", "idr", "num_switches", "num_fragmentations",
+    "mostly_tracked", "mostly_lost", "precision", "recall", "num_frames", "num_objects",
+    "num_predictions",
+)  # fmt: skip
+
+
+def _arm_key(r: dict) -> tuple[str, int, str]:
+    return (r["config"], r["k"], r["arm"])
+
+
+def summary_rows(
+    cells: Sequence[dict],
+    events: Sequence[dict],
+    seqs: Sequence[dict],
+    n_resamples: int = N_RESAMPLES,
+    seed: int = SEED,
+) -> tuple[list[dict], dict]:
+    """Pooled metrics with 95 % cluster-bootstrap intervals per (config, k, arm).
+
+    Returns the rows and the per-key bootstrap metric arrays (shared weights, so differences
+    between keys are paired).
+    """  # fmt: skip
+    universe = block_universe(seqs)
+    w = resample_weights(len(universe), n_resamples, seed)
+    by_key: dict[tuple, list[dict]] = defaultdict(list)
+    for r in cells:
+        by_key[_arm_key(r)].append(r)
+    ev_by_key: dict[tuple, list[dict]] = defaultdict(list)
+    for e in events:
+        ev_by_key[(e["config"], int(e["k"]), e["arm"])].append(e)
+    rows, boot = [], {}
+    for key in sorted(by_key, key=lambda t: (_config_rank(t[0]), t[1], t[2])):
+        rs = by_key[key]
+        pooled = pool(rs)
+        row = {"config": key[0], "k": key[1], "arm": key[2],
+               "tau": rs[0]["tau"], "band": rs[0]["band"]}  # fmt: skip
+        row.update({m: pooled[m] for m in _POOLED})
+        table = build_table(ev_by_key.get(key, []), universe, *key)
+        boot[key] = pooled_metrics(table, w)
+        for m in SUMMARY_CI_METRICS:
+            row[f"{m}_lo"], row[f"{m}_hi"] = interval(boot[key][m])
+        rows.append(row)
+    return rows, boot
+
+
+def by_sequence_rows(cells: Sequence[dict], mot: Sequence[dict]) -> list[dict]:
+    """Pooled metrics per (config, k, arm, seq), with MOT metrics joined at the selected tau."""
+    mot_by = {(m["config"], m["seq"], m["k"], m["tau"]): m for m in mot}
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for r in cells:
+        groups[(*_arm_key(r), r["seq"])].append(r)
+    rows = []
+    for key in sorted(groups, key=lambda t: (_config_rank(t[0]), t[1], t[2], t[3])):
+        rs = groups[key]
+        pooled = pool(rs)
+        row = {"config": key[0], "k": key[1], "arm": key[2], "seq": key[3],
+               "tau": rs[0]["tau"], "band": rs[0]["band"]}  # fmt: skip
+        row.update({m: pooled[m] for m in _POOLED})
+        m = mot_by.get((key[0], key[3], key[1], rs[0]["tau"]), {})
+        row.update({f"mot_{c}": m.get(c, "") for c in _MOT_COLS})
+        rows.append(row)
+    return rows
+
+
+def detector_score_rows(
+    src: Sources,
+    configs: Sequence[str],
+    seqs: Sequence[str],
+    selected_tau: dict[str, float],
+    split_of: Callable[[str], str],
+    taus: Sequence[float] = TAUS,
+    log: Callable[[str], None] = print,
+) -> list[dict]:
+    """Per (config, sequence): detection counts and person-score quantiles from the caches.
+
+    A missing cache is skipped with a log line. `selected_tau` maps config -> the threshold
+    chosen for k = 1, hysteresis. Scores here are the cached person detections (>= 0.10).
+    """
+    rows = []
+    for config in configs:
+        for seq in seqs:
+            try:
+                per_frame = src.detections(config, seq)
+            except FileNotFoundError:
+                log(f"scores: no cache for {config}/{seq}, skipped")
+                continue
+            n_frames = max(1, src.n_frames(seq))
+            scores = (
+                np.concatenate([d.score for d in per_frame.values()])
+                if per_frame else np.empty(0)
+            )  # fmt: skip
+            q = np.percentile(scores, [50, 90, 99]) if scores.size else [float("nan")] * 3
+            row = {
+                "config": config, "seq": seq, "split": split_of(seq), "n_frames": n_frames,
+                "mean_det_per_frame": scores.size / n_frames,
+                "mean_gt_per_frame": len(src.gt(seq)) / n_frames,
+                "score_p50": float(q[0]), "score_p90": float(q[1]), "score_p99": float(q[2]),
+                "score_max": float(scores.max()) if scores.size else float("nan"),
+            }  # fmt: skip
+            for t in taus:
+                row[f"det_per_frame_ge_{t}"] = int((scores >= t).sum()) / n_frames
+            row["selected_tau_k1_hysteresis"] = selected_tau.get(config, "")
+            rows.append(row)
+    return rows
+
+
+def h3_accuracy_half(boot: dict, point: dict, log: Callable[[str], None] = print) -> dict | None:
+    """f1(S) - f1(S8) at k = 1, hysteresis arm, paired over the same resampled blocks."""
+    a, b = ("S", 1, "hysteresis"), ("S8", 1, "hysteresis")
+    if a not in boot or b not in boot:
+        log("H3 accuracy half: S and S8 at k=1, hysteresis not both in the results")
+        return None
+    d = boot[a]["f1"] - boot[b]["f1"]
+    lo, hi = interval(d)
+    out = {
+        "f1_S": point[a], "f1_S8": point[b], "difference": point[a] - point[b],
+        "ci95": [lo, hi], "upper_bound_within_0.03": hi <= H3_MAX_F1_DROP,
+    }  # fmt: skip
+    log(
+        f"H3 accuracy half (reported; the speed half needs bench.csv): f1(S) - f1(S8) = "
+        f"{out['difference']:.4f}, paired 95% CI [{lo:.4f}, {hi:.4f}], upper bound <= "
+        f"{H3_MAX_F1_DROP}: {'yes' if out['upper_bound_within_0.03'] else 'no'}"
+    )
+    return out
+
+
+def summary(
+    out_dir: Path = RESULTS,
+    src: Sources | None = None,
+    n_resamples: int = N_RESAMPLES,
+    seed: int = SEED,
+    log: Callable[[str], None] = print,
+) -> dict:
+    """Reported-only tables from the committed `test_*.csv` files and the detection caches.
+
+    Writes `test_summary.csv` (pooled metrics with bootstrap intervals), `test_by_sequence.csv`
+    (per sequence, with MOT metrics at the selected tau) and `test_detector_scores.csv` (score
+    distribution per config and sequence, dev and test). Prints the accuracy half of H3.
+    Never changes `test_cells.csv`, `test_events.csv`, `test_sequences.csv` or `test_mot.csv`.
+    """
+    out_dir = Path(out_dir)
+    cells = read_csv(out_dir / TEST_CELLS)
+    events = read_csv(out_dir / TEST_EVENTS)
+    seqs = read_csv(out_dir / TEST_SEQUENCES)
+    mot = read_csv(out_dir / TEST_MOT)
+    rows, boot = summary_rows(cells, events, seqs, n_resamples, seed)
+    write_csv(out_dir / SUMMARY, rows)
+    write_csv(out_dir / BY_SEQUENCE, by_sequence_rows(cells, mot))
+    point = {(r["config"], r["k"], r["arm"]): r["f1"] for r in rows}
+    h3 = h3_accuracy_half(boot, point, log)
+
+    selected = {r["config"]: r["tau"] for r in cells if r["k"] == 1 and r["arm"] == "hysteresis"}
+    if src is None:
+        src = default_sources()
+    from vidan.data import SEQUENCES
+
+    score_rows = detector_score_rows(
+        src,
+        sorted({r["config"] for r in cells}, key=_config_rank),
+        list(SEQUENCES),
+        selected,
+        lambda s: SEQUENCES[s].split,
+        log=log,
+    )
+    write_csv(out_dir / DETECTOR_SCORES, score_rows)
+    log(f"summary: {len(rows)} rows, {len(score_rows)} score rows -> {out_dir}")
+    return {"summary": rows, "scores": score_rows, "h3_accuracy": h3}
+
+
 # ------------------------------------------------------------------------------------------ cli
 
 
@@ -1054,6 +1236,9 @@ def run_cli(args: Any) -> int:
         return 0
     if args.stage == "frontier":
         frontier(out_dir)
+        return 0
+    if args.stage == "summary":
+        summary(out_dir, default_sources(args.cache_root, args.raw_root))
         return 0
     src = default_sources(args.cache_root, args.raw_root)
     if args.stage == "tune":

@@ -167,8 +167,10 @@ def _run_equiv(args: argparse.Namespace) -> int:
 
 
 def _add_eval(subparsers) -> None:
-    p = subparsers.add_parser("eval", help="the frozen evaluation: tune | test | claims | frontier")
-    p.add_argument("stage", choices=["tune", "test", "claims", "frontier"])
+    p = subparsers.add_parser(
+        "eval", help="the frozen evaluation: tune | test | claims | frontier | summary"
+    )
+    p.add_argument("stage", choices=["tune", "test", "claims", "frontier", "summary"])
     p.add_argument("--configs", nargs="+", help="restrict to these detector configs (S N S8 N8)")
     p.add_argument("--seqs", nargs="+", help="restrict to these sequences (smoke runs only)")
     p.add_argument("--ks", nargs="+", type=int, help="restrict the frame-skip grid (smoke runs)")
