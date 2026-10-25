@@ -177,3 +177,15 @@ four not supported, not two), MOT20 frame widths (1,173–1,920 px), the best ce
 caveat, Small's mean IoU (0.9998), and "the threshold decides everything", now stated as a
 confounded observation. Mechanisms not tested on the test set are now marked as likely or
 untested.
+
+## 2026-10-25 — local CI record (hosted Actions not used: no repo yet)
+
+Fresh clone of `9a5e6d6`, fresh install (`UV_NO_CACHE=1`), the workflow's steps in order:
+`uv sync --all-groups` → heavy packages (torch, onnxruntime, rfdetr) absent: pass →
+`ruff check` + `ruff format --check`: clean (38 files) → `pytest -m "not integration" --cov=src`:
+**174 passed, 3 skipped, 10 deselected, coverage 81 %** → `vidan --help` runs from the installed
+entry point. Later commits change docs only. Full suite with the vision extra in the working copy:
+172 passed earlier the same day (integration tests included). Differences from the hosted runner:
+Windows 11 instead of Ubuntu, `--basetemp` in a scratch folder, `-p no:cacheprovider`. Hygiene:
+0 matches for assistant attribution in history, no tracked tool files, secrets, weights, caches
+or video; one author on every commit.

@@ -124,7 +124,7 @@ side) or `-1`, and `frame` is the frame of the observation that completed it.
 - [x] Event matching tested on fixtures where net count is exact but F1 < 1
 - [x] `EVAL_PLAN.md` frozen before any test-sequence run; claims evaluated mechanically
 - [x] CPU benchmark: PyTorch vs ONNX fp32 vs ONNX int8 at each model's input size, same machine, same threads
-- [ ] Runs from a clean clone using only the documented steps; tests, lint and CI green
+- [x] Runs from a clean clone using only the documented steps; tests, lint and CI green
 
 ## Conventions
 
