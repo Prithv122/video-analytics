@@ -27,12 +27,33 @@
   },
   "H3": {
     "claim": "int8 is a free speed-up: S8/S detector FPS >= 1.3 and f1(S) - f1(S8) <= 0.03 (upper bound)",
-    "status": "not evaluable",
-    "detail": "bench.csv missing or has no S / S8 ONNX detector_fps"
+    "status": "supported",
+    "estimate": 1.3810447395650025,
+    "ci95": [
+      -0.09951618252286616,
+      -0.04896406903528316
+    ],
+    "detail": {
+      "fps_ratio": 1.3810447395650025,
+      "speed_ok": true,
+      "f1_drop_upper_bound": -0.04896406903528316,
+      "accuracy_ok": true
+    }
   },
   "H4": {
     "claim": "ONNX Runtime >= 1.5 x eager PyTorch FPS for Nano and Small, equivalence passing",
-    "status": "not evaluable",
-    "detail": "bench.csv missing or has no ONNX and PyTorch detector_fps for N"
+    "status": "not supported",
+    "detail": {
+      "N": {
+        "fps_ratio": 0.8442215205328855,
+        "speed_ok": false,
+        "equivalence_ok": false
+      },
+      "S": {
+        "fps_ratio": 0.6952555340443074,
+        "speed_ok": false,
+        "equivalence_ok": false
+      }
+    }
   }
 }
