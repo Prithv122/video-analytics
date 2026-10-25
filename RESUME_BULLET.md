@@ -1,30 +1,25 @@
-# Resume Bullets — {{PROJECT_NAME}}
+# Resume Bullets — video-analytics
 
-Form: **action → technical specifics → measured outcome.** Numbers or it doesn't go on the resume.
+Form: **action → technical specifics → measured outcome.** Every number is in `results/`.
 
 ---
 
 ## Bullets
 
-- _..._
-- _..._
+- Built a detect → ByteTrack → line-count pipeline (RF-DETR on ONNX Runtime, CPU) and scored every
+  crossing against annotated tracks on held-out MOT20 under a pre-registered plan; identity-aware
+  matching and per-error attribution showed misses, not identity switches, drive the error
+  (recall ≤ 0.19 in all 32 configurations, switches ≤ 5 % of errors).
+- Found that a confidence threshold tuned on MOT17 produced zero tracks on MOT20's densest
+  sequence (peak person score 0.59 vs threshold 0.60). Benchmarked CPU inference behind a
+  quiet-machine gate: int8 1.38× faster than fp32, ONNX Runtime 0.70–0.84× eager PyTorch.
 
-## Which roles this supports
+## Roles
 
-- [ ] Data Scientist / ML
-- [ ] AI Engineer (LLM/NLP/CV)
-- [ ] Data Engineer
-- [ ] Data Analyst / Python Developer
+- **AI / CV engineer:** the pipeline, ONNX export and int8 quantisation, the measured CPU budget.
+- **Data scientist / ML engineer:** pre-registration, dev/test discipline, cluster bootstrap, error attribution.
 
-## Keywords this project earns
+## Keywords
 
-_Only list what you actually used and could be questioned on._
-
----
-
-### Bad vs good
-
-❌ "Built a machine learning model to predict customer churn using Python."
-✅ "Built a churn classifier on 240k accounts (LightGBM, 1:40 class imbalance) with isotonic calibration and cost-sensitive thresholding, lifting precision@10% from 0.31 to 0.58 over the business's existing rules baseline."
-
-The second one is answerable in an interview. The first invites the question you can't answer.
+Multi-object tracking · ByteTrack · RF-DETR · ONNX Runtime · int8 quantisation · MOT17/MOT20 ·
+MOTA/IDF1 · event matching · cluster bootstrap · pre-registration · domain shift
