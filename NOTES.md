@@ -92,7 +92,7 @@ Nearly all the error is extra crossings, and nearly none of it is identity switc
 So the bottom-centre of a detection box is not a foot position. That is the main threat to any
 line counter built on box anchors, and it is not something a tracker setting fixes.
 
-## 2026-10-25 — scope vs the approved slot brief (awaiting owner sign-off)
+## 2026-10-25 — scope vs the approved slot brief (decided: amendment A2)
 
 The slot brief approved on 2026-09-30 was read only after the build started. Where this repo
 differs from it:
@@ -114,5 +114,9 @@ Why MOT was chosen, for the owner's decision: annotated identities make the ques
 half ("what share of the error is identity switches vs missed detections") measurable on every
 crossing rather than on one hand-labelled minute; the test set is public, so anyone can rerun it;
 and it needs no filming. What it gives up: the traffic framing that P-17/P-18 build on, and a
-hand count on the owner's own camera. Until the owner decides, the MOT pipeline keeps running as
+hand count on the owner's own camera. Before the decision, the MOT pipeline kept running as
 built; nothing in it is tuned to the choice.
+
+**Decision (owner, 2026-10-25):** keep MOT17 → MOT20 as the primary benchmark, superseding brief
+decision 2a; recorded as `EVAL_PLAN.md` amendment A2. Own vehicle clips with a hand count become
+a later, separate external check with its own pre-registration.

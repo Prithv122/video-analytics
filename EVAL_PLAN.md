@@ -160,3 +160,15 @@ none of these changes touch).
 6. MOTA / IDF1 here keep predictions matched to non-pedestrian GT (the MOTChallenge devkit removes
    them), so they are not comparable to leaderboard numbers. They were already "reported, not
    claimed".
+
+### A2 — 2026-10-25, scope decision by the owner, before any dev tuning or test scoring
+
+The project's approved slot brief (2026-09-30) chose vehicles on owner-filmed fixed-camera clips
+with hand counts as the held-out data, and proposed "absolute count error ≤ 5 % per line on ≥ 2
+of 3 clips" as the criterion. The owner decided on 2026-10-25 that **this plan (MOT17 static
+sequences for dev, MOT20 for test, annotated track ids as truth, claims H1–H4) is the primary
+benchmark and supersedes that brief decision.** The brief's 5 % criterion is not a claim here.
+
+Owner-filmed vehicle clips with a hand count become a **later, separate external check**, with its
+own pre-registration written before those clips are scored. It does not change, re-tune or
+re-score anything in this plan. Nothing here was tuned or scored when this was written.
