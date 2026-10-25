@@ -120,3 +120,19 @@ built; nothing in it is tuned to the choice.
 **Decision (owner, 2026-10-25):** keep MOT17 → MOT20 as the primary benchmark, superseding brief
 decision 2a; recorded as `EVAL_PLAN.md` amendment A2. Own vehicle clips with a hand count become
 a later, separate external check with its own pre-registration.
+
+## 2026-10-25 — dev selection committed (frozen grid, before any test scoring)
+
+`vidan eval tune` on all four configs (256 grid rows, 9 min) → `results/dev_grid.csv`,
+`results/dev_selection.csv`. All 12 dev caches complete, 0 bad frames. Small's rows are identical
+to the earlier scratch pass. Dev f1 at k = 1 (tuning numbers): S 0.31 naive / 0.46 hysteresis,
+S8 0.26 / 0.39, N 0.21 / 0.34, N8 0.24 / 0.36.
+
+Two things the grid shows, reported and not acted on (the grid is frozen):
+
+- **Selections sit on the grid's edge.** The hysteresis arm picked band 32, the largest offered, in
+  15 of 16 cells, and τ = 0.6, the highest, in most. The best setting may lie outside the grid; the
+  test run uses what the rule picked.
+- **Frame skip helps on dev.** f1 rises with k for most configs (S hysteresis 0.46 → 0.50 at
+  k = 3). Fewer observations per second means fewer chances for an anchor to jitter across the
+  line. Whether that holds on MOT20 is a test question.
