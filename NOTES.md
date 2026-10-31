@@ -189,3 +189,24 @@ entry point. Later commits change docs only. Full suite with the vision extra in
 Windows 11 instead of Ubuntu, `--basetemp` in a scratch folder, `-p no:cacheprovider`. Hygiene:
 0 matches for assistant attribution in history, no tracked tool files, secrets, weights, caches
 or video; one author on every commit.
+
+## 2026-11-01 — local CI record for `8779434` (hosted CI unavailable)
+
+Hosted CI unavailable (Actions limit until ~2026-11-02); no repo was pushed yet. Fresh clone, checked
+out at `8779434`, fresh install (`UV_NO_CACHE=1`), Windows 11, Python 3.12.13, uv 0.11.19. The
+workflow's steps in order:
+
+- `uv python install` → 3.12 already present
+- `uv sync --all-groups` → pass (no `vision` extra)
+- heavy packages (torch, onnxruntime, rfdetr) absent: pass
+- `uv run ruff check .` → all checks passed; `uv run ruff format --check .` → 38 files already formatted
+- `uv run pytest -m "not integration" --cov=src --cov-report=term-missing --basetemp=<scratch>\pt -p no:cacheprovider`
+  → **174 passed, 3 skipped, 10 deselected, coverage 81 %** (45 s). Same numbers as the `9a5e6d6` record;
+  the commits since then change docs only.
+- `uv run vidan --help` runs from the installed entry point (extra check, not a workflow step).
+
+Differences from the hosted runner: Windows 11 instead of ubuntu-latest, `--basetemp` in a scratch
+folder and `-p no:cacheprovider` (sandbox blocks the default temp folder), `UV_NO_CACHE=1` instead of
+the setup-uv cache. No step was skipped. Hygiene: 0 matches for assistant attribution in history, one
+author on every commit, no tracked tool files, `.env`, weights, video or caches, and no `C:\Users\fever`
+paths in tracked files.
